@@ -80,7 +80,7 @@ export default function Home() {
             <div className="w-10 h-10 bg-primary text-white rounded-2xl flex items-center justify-center rotate-3 shadow-md">
               <Sparkles className="w-6 h-6" />
             </div>
-            <span>Sticker Studio</span>
+            <span>貼圖工作室</span>
           </div>
         </header>
 
@@ -135,7 +135,7 @@ export default function Home() {
                 </AnimatePresence>
 
                 <p className="mt-8 text-sm text-muted-foreground/60 max-w-sm text-center">
-                  這大約需要 30 到 90 秒，可以去泡杯茶或伸個懶腰 🍵
+                  這大約需要 30 到 90 秒，可以先去泡杯茶或伸個懶腰。
                 </p>
               </motion.div>
             )}
@@ -161,7 +161,7 @@ export default function Home() {
         </div>
         
         <footer className="w-full mt-auto pt-12 pb-4 text-center text-sm text-muted-foreground flex items-center justify-center gap-1">
-          Made with <Heart className="w-3 h-3 text-red-400" /> for sticker lovers
+          用 <Heart className="w-3 h-3 text-red-400" /> 為每一位喜歡貼圖的你打造
         </footer>
 
       </main>
