@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Heart } from "lucide-react";
-import { StickerGenerator } from "@/components/sticker-generator";
+import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
 import { StickerResult } from "@/components/sticker-result";
 import { StickerHistory } from "@/components/sticker-history";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
@@ -18,6 +18,7 @@ export default function Home() {
 
   const { toast } = useToast();
   const generateMutation = useGenerateStickerSheet();
+  const generatorRef = useRef<StickerGeneratorHandle>(null);
 
   const hints = [
     "正在分析你的完美角度...",
@@ -28,7 +29,12 @@ export default function Home() {
     "最後的魔法點綴 ✨..."
   ];
 
-  const handleGenerate = (photoBase64: string, theme: string | null, texts: string[]) => {
+  const handleGenerate = (
+    photoBase64: string,
+    theme: string | null,
+    texts: string[],
+    turnstileToken: string | null,
+  ) => {
     setAppState("loading");
     setCurrentTexts(texts);
     
@@ -38,12 +44,14 @@ export default function Home() {
     }, 5000);
 
     generateMutation.mutate(
-      { data: { photoBase64, theme, texts } },
+      { data: { photoBase64, theme, texts, turnstileToken } },
       {
         onSuccess: (data) => {
           clearInterval(hintInterval);
           setSheetBase64(data.imageBase64);
           setAppState("result");
+          // Captcha tokens are single-use; reset for next generation.
+          generatorRef.current?.resetCaptcha();
           toast({
             title: "生成成功！🎉",
             description: "你的專屬 3D Q版貼圖已經準備好囉！",
@@ -57,6 +65,22 @@ export default function Home() {
         onError: (error) => {
           clearInterval(hintInterval);
           setAppState("upload");
+          // Always reset the captcha after a failed attempt — the token is
+          // either consumed (single-use) or invalid, so the user needs a
+          // fresh challenge before retrying.
+          generatorRef.current?.resetCaptcha();
+
+          if (error instanceof ApiError && error.status === 403) {
+            const data = error.data as { error?: string } | null;
+            toast({
+              title: "請完成人機驗證",
+              description:
+                data?.error ??
+                "人機驗證未通過或已過期，請重新驗證後再試一次。",
+              variant: "destructive",
+            });
+            return;
+          }
 
           if (error instanceof ApiError && error.status === 429) {
             const data = error.data as
@@ -137,6 +161,7 @@ export default function Home() {
                 className="w-full space-y-10"
               >
                 <StickerGenerator 
+                  ref={generatorRef}
                   onSubmit={handleGenerate} 
                   isPending={generateMutation.isPending} 
                 />

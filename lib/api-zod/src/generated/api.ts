@@ -44,6 +44,12 @@ export const GenerateStickerSheetBody = zod.object({
     .describe(
       "Exactly 24 Chinese sticker text labels in row-major order (4 columns × 6 rows).",
     ),
+  turnstileToken: zod
+    .string()
+    .nullish()
+    .describe(
+      "Cloudflare Turnstile verification token obtained client-side via the\nTurnstile widget. Required when the server is configured with a\nTURNSTILE_SECRET_KEY; ignored otherwise.\n",
+    ),
 });
 
 export const GenerateStickerSheetResponse = zod.object({

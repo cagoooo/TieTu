@@ -94,6 +94,12 @@ components:
           items:
             type: string
           description: Exactly 24 Chinese sticker text labels in row-major order (4 columns × 6 rows).
+        turnstileToken:
+          type: ["string", "null"]
+          description: |
+            Cloudflare Turnstile verification token obtained client-side via the
+            Turnstile widget. Required when the server is configured with a
+            TURNSTILE_SECRET_KEY; ignored otherwise.
       required:
         - photoBase64
         - texts

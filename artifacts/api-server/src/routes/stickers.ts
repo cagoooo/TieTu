@@ -6,6 +6,7 @@ import {
 import { editImagesFromBuffers } from "@workspace/integrations-openai-ai-server/image";
 import { logger } from "../lib/logger";
 import { rateLimit } from "../middlewares/rate-limit";
+import { verifyTurnstile } from "../middlewares/verify-turnstile";
 
 const router: IRouter = Router();
 
@@ -143,55 +144,60 @@ ${labelLines}
 Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). Do not translate, romanize, abbreviate, or substitute the text. Do not add extra text, logos, watermarks, signatures, page numbers, or borders. The output must be a single flat image of the full sheet only.`;
 }
 
-router.post("/stickers/generate", stickerRateLimiter, async (req, res) => {
-  const parsed = GenerateStickerSheetBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      error: `請求格式錯誤：${parsed.error.issues
-        .map((i) => `${i.path.join(".")} ${i.message}`)
-        .join("; ")}`,
-    });
-    return;
-  }
+router.post(
+  "/stickers/generate",
+  verifyTurnstile(),
+  stickerRateLimiter,
+  async (req, res) => {
+    const parsed = GenerateStickerSheetBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: `請求格式錯誤：${parsed.error.issues
+          .map((i) => `${i.path.join(".")} ${i.message}`)
+          .join("; ")}`,
+      });
+      return;
+    }
 
-  const { photoBase64, theme, texts } = parsed.data;
+    const { photoBase64, theme, texts } = parsed.data;
 
-  let decoded: DecodedImage;
-  try {
-    decoded = decodePhoto(photoBase64);
-  } catch (err) {
-    res.status(400).json({
-      error: `照片解析失敗：${err instanceof Error ? err.message : String(err)}`,
-    });
-    return;
-  }
+    let decoded: DecodedImage;
+    try {
+      decoded = decodePhoto(photoBase64);
+    } catch (err) {
+      res.status(400).json({
+        error: `照片解析失敗：${err instanceof Error ? err.message : String(err)}`,
+      });
+      return;
+    }
 
-  const prompt = buildPrompt(texts, theme ?? null);
+    const prompt = buildPrompt(texts, theme ?? null);
 
-  try {
-    const sheetBuffer = await editImagesFromBuffers(
-      [
-        {
-          buffer: decoded.buffer,
-          filename: decoded.filename,
-          mimeType: decoded.mimeType,
-        },
-      ],
-      prompt,
-      "1024x1536",
-    );
+    try {
+      const sheetBuffer = await editImagesFromBuffers(
+        [
+          {
+            buffer: decoded.buffer,
+            filename: decoded.filename,
+            mimeType: decoded.mimeType,
+          },
+        ],
+        prompt,
+        "1024x1536",
+      );
 
-    const payload = GenerateStickerSheetResponse.parse({
-      imageBase64: sheetBuffer.toString("base64"),
-      mimeType: "image/png",
-    });
-    res.json(payload);
-  } catch (err) {
-    logger.error({ err }, "Sticker generation failed");
-    const message =
-      err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
-    res.status(500).json({ error: `貼圖生成失敗：${message}` });
-  }
-});
+      const payload = GenerateStickerSheetResponse.parse({
+        imageBase64: sheetBuffer.toString("base64"),
+        mimeType: "image/png",
+      });
+      res.json(payload);
+    } catch (err) {
+      logger.error({ err }, "Sticker generation failed");
+      const message =
+        err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
+      res.status(500).json({ error: `貼圖生成失敗：${message}` });
+    }
+  },
+);
 
 export default router;

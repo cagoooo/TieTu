@@ -22,4 +22,12 @@ data URL (e.g. "data:image/png;base64,...").
    * @maxItems 24
    */
   texts: string[];
+  /**
+   * Cloudflare Turnstile verification token obtained client-side via the
+Turnstile widget. Required when the server is configured with a
+TURNSTILE_SECRET_KEY; ignored otherwise.
+
+   * @nullable
+   */
+  turnstileToken?: string | null;
 }

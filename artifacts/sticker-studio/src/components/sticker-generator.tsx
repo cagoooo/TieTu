@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useImperativeHandle, forwardRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Upload, Image as ImageIcon, Sparkles, Wand2 } from "lucide-react";
+import { Upload, Image as ImageIcon, Sparkles, Wand2, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { DEFAULT_TEXTS, getThemeTexts, fileToBase64 } from "@/lib/sticker-utils";
+import { TurnstileWidget, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
+
+const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || "";
 
 const formSchema = z.object({
   theme: z.string().optional(),
@@ -20,16 +23,39 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface StickerGeneratorProps {
-  onSubmit: (photoBase64: string, theme: string | null, texts: string[]) => void;
+  onSubmit: (
+    photoBase64: string,
+    theme: string | null,
+    texts: string[],
+    turnstileToken: string | null,
+  ) => void;
   isPending: boolean;
 }
 
-export function StickerGenerator({ onSubmit, isPending }: StickerGeneratorProps) {
+export interface StickerGeneratorHandle {
+  resetCaptcha: () => void;
+}
+
+export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGeneratorProps>(
+  function StickerGenerator({ onSubmit, isPending }, ref) {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const turnstileRef = useRef<TurnstileWidgetHandle>(null);
   const { toast } = useToast();
+
+  const captchaEnabled = TURNSTILE_SITE_KEY.length > 0;
+
+  const resetCaptcha = () => {
+    setTurnstileToken(null);
+    setCaptchaError(null);
+    turnstileRef.current?.reset();
+  };
+
+  useImperativeHandle(ref, () => ({ resetCaptcha }), []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -110,9 +136,24 @@ export function StickerGenerator({ onSubmit, isPending }: StickerGeneratorProps)
       return;
     }
 
+    if (captchaEnabled && !turnstileToken) {
+      setCaptchaError("請先完成下方的人機驗證再送出。");
+      toast({
+        title: "請先完成人機驗證",
+        description: "勾選下方的「我不是機器人」後再試一次。",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const base64 = await fileToBase64(photoFile);
-      onSubmit(base64, values.theme || null, values.texts);
+      onSubmit(
+        base64,
+        values.theme || null,
+        values.texts,
+        captchaEnabled ? turnstileToken : null,
+      );
     } catch (error) {
       toast({
         title: "圖片處理失敗",
@@ -248,10 +289,39 @@ export function StickerGenerator({ onSubmit, isPending }: StickerGeneratorProps)
                 ))}
               </div>
 
-              <div className="mt-auto pt-4 border-t border-border">
+              <div className="mt-auto pt-4 border-t border-border space-y-3">
+                {captchaEnabled && (
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>請完成下方人機驗證，確認你是真人</span>
+                    </div>
+                    <TurnstileWidget
+                      ref={turnstileRef}
+                      siteKey={TURNSTILE_SITE_KEY}
+                      onVerify={(token) => {
+                        setTurnstileToken(token);
+                        setCaptchaError(null);
+                      }}
+                      onError={() => {
+                        setTurnstileToken(null);
+                        setCaptchaError("人機驗證載入失敗，請稍後再試或重新整理頁面。");
+                      }}
+                      onExpire={() => {
+                        setTurnstileToken(null);
+                        setCaptchaError("人機驗證已過期，請重新驗證。");
+                      }}
+                    />
+                    {captchaError && (
+                      <p className="text-xs text-destructive font-medium text-center">
+                        {captchaError}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <Button 
                   onClick={form.handleSubmit(handleSubmit)} 
-                  disabled={isPending || !photoFile}
+                  disabled={isPending || !photoFile || (captchaEnabled && !turnstileToken)}
                   className="w-full h-16 text-xl font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all"
                   size="lg"
                 >
@@ -272,6 +342,11 @@ export function StickerGenerator({ onSubmit, isPending }: StickerGeneratorProps)
                     請先上傳照片才能生成喔！
                   </p>
                 )}
+                {photoFile && captchaEnabled && !turnstileToken && (
+                  <p className="text-center text-sm text-muted-foreground mt-2">
+                    完成人機驗證後即可生成。
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -279,4 +354,4 @@ export function StickerGenerator({ onSubmit, isPending }: StickerGeneratorProps)
       </div>
     </div>
   );
-}
+});
