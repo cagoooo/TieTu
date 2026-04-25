@@ -19,11 +19,14 @@ import {
   type Guides,
 } from "@/lib/sticker-utils";
 import { StickerCropper } from "./sticker-cropper";
+import { StickerHistory } from "./sticker-history";
+import type { HistoryEntry } from "@/lib/sticker-history";
 
 interface StickerResultProps {
   sheetBase64: string;
   texts: string[];
   onBack: () => void;
+  onOpenHistory: (entry: HistoryEntry) => void;
 }
 
 interface StepperProps {
@@ -73,7 +76,7 @@ function Stepper({ label, value, min, max, onChange, testIdPrefix }: StepperProp
   );
 }
 
-export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps) {
+export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: StickerResultProps) {
   const [cols, setCols] = useState<number>(DEFAULT_COLS);
   const [rows, setRows] = useState<number>(DEFAULT_ROWS);
   const [guides, setGuides] = useState<Guides>(() => getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
@@ -331,6 +334,10 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <div className="mt-10">
+        <StickerHistory onOpen={onOpenHistory} />
       </div>
     </div>
   );

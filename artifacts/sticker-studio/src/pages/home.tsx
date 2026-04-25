@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Loader2, Heart } from "lucide-react";
+import { Sparkles, Heart } from "lucide-react";
 import { StickerGenerator } from "@/components/sticker-generator";
 import { StickerResult } from "@/components/sticker-result";
+import { StickerHistory } from "@/components/sticker-history";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
 
 type AppState = "upload" | "loading" | "result";
 
@@ -13,7 +15,7 @@ export default function Home() {
   const [sheetBase64, setSheetBase64] = useState<string | null>(null);
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
   const [loadingHints, setLoadingHints] = useState(0);
-  
+
   const { toast } = useToast();
   const generateMutation = useGenerateStickerSheet();
 
@@ -46,6 +48,11 @@ export default function Home() {
             title: "生成成功！🎉",
             description: "你的專屬 3D Q版貼圖已經準備好囉！",
           });
+          addHistoryEntry({
+            theme,
+            texts,
+            sheetBase64: data.imageBase64,
+          }).catch((err) => console.error("Failed to add history", err));
         },
         onError: (error) => {
           clearInterval(hintInterval);
@@ -89,6 +96,15 @@ export default function Home() {
     setSheetBase64(null);
   };
 
+  const handleOpenHistory = (entry: HistoryEntry) => {
+    setSheetBase64(entry.sheetBase64);
+    setCurrentTexts(entry.texts);
+    setAppState("result");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="min-h-[100dvh] w-full bg-background overflow-x-hidden selection:bg-primary/20">
       {/* Decorative background blobs */}
@@ -118,12 +134,15 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                className="w-full"
+                className="w-full space-y-10"
               >
                 <StickerGenerator 
                   onSubmit={handleGenerate} 
                   isPending={generateMutation.isPending} 
                 />
+                <div className="max-w-4xl mx-auto w-full">
+                  <StickerHistory onOpen={handleOpenHistory} />
+                </div>
               </motion.div>
             )}
 
@@ -176,7 +195,8 @@ export default function Home() {
                 <StickerResult 
                   sheetBase64={sheetBase64} 
                   texts={currentTexts} 
-                  onBack={handleBack} 
+                  onBack={handleBack}
+                  onOpenHistory={handleOpenHistory}
                 />
               </motion.div>
             )}
