@@ -6,6 +6,11 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Replit's preview / deployments place this server behind a reverse proxy.
+// Trusting the proxy lets `req.ip` resolve to the real client IP, which the
+// per-IP rate limiter relies on.
+app.set("trust proxy", true);
+
 app.use(
   pinoHttp({
     logger,

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Loader2, Heart } from "lucide-react";
 import { StickerGenerator } from "@/components/sticker-generator";
 import { StickerResult } from "@/components/sticker-result";
-import { useGenerateStickerSheet } from "@workspace/api-client-react";
+import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
 type AppState = "upload" | "loading" | "result";
@@ -50,6 +50,30 @@ export default function Home() {
         onError: (error) => {
           clearInterval(hintInterval);
           setAppState("upload");
+
+          if (error instanceof ApiError && error.status === 429) {
+            const data = error.data as
+              | {
+                  error?: string;
+                  scope?: "minute" | "day";
+                  retryAfterSeconds?: number;
+                }
+              | null;
+            const scope = data?.scope;
+            const description =
+              data?.error ??
+              "目前生成需求很多，請稍等一下再試一次。";
+            toast({
+              title:
+                scope === "day"
+                  ? "今天的額度用完囉"
+                  : "生成太頻繁啦",
+              description,
+              variant: "destructive",
+            });
+            return;
+          }
+
           toast({
             title: "生成失敗",
             description: "抱歉，魔法暫時失靈了，請稍後再試！",

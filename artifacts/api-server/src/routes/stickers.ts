@@ -5,8 +5,37 @@ import {
 } from "@workspace/api-zod";
 import { editImagesFromBuffers } from "@workspace/integrations-openai-ai-server/image";
 import { logger } from "../lib/logger";
+import { rateLimit } from "../middlewares/rate-limit";
 
 const router: IRouter = Router();
+
+function readPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    logger.warn(
+      { env: name, value: raw },
+      `Invalid ${name}, falling back to ${fallback}`,
+    );
+    return fallback;
+  }
+  return parsed;
+}
+
+const STICKER_RATE_LIMIT_PER_MINUTE = readPositiveInt(
+  "STICKER_RATE_LIMIT_PER_MINUTE",
+  3,
+);
+const STICKER_RATE_LIMIT_PER_DAY = readPositiveInt(
+  "STICKER_RATE_LIMIT_PER_DAY",
+  30,
+);
+
+const stickerRateLimiter = rateLimit({
+  perMinute: STICKER_RATE_LIMIT_PER_MINUTE,
+  perDay: STICKER_RATE_LIMIT_PER_DAY,
+});
 
 interface DecodedImage {
   buffer: Buffer;
@@ -114,7 +143,7 @@ ${labelLines}
 Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). Do not translate, romanize, abbreviate, or substitute the text. Do not add extra text, logos, watermarks, signatures, page numbers, or borders. The output must be a single flat image of the full sheet only.`;
 }
 
-router.post("/stickers/generate", async (req, res) => {
+router.post("/stickers/generate", stickerRateLimiter, async (req, res) => {
   const parsed = GenerateStickerSheetBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({
