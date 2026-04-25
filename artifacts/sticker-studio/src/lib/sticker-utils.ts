@@ -32,12 +32,16 @@ export function getDefaultGuides(): Guides {
   return { xCuts, yCuts };
 }
 
+export function toImageDataUrl(base64: string, mimeType = "image/png"): string {
+  return base64.startsWith("data:") ? base64 : `data:${mimeType};base64,${base64}`;
+}
+
 export function loadImage(base64: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = reject;
-    img.src = base64.startsWith("data:") ? base64 : `data:image/png;base64,${base64}`;
+    img.src = toImageDataUrl(base64);
   });
 }
 
@@ -89,7 +93,7 @@ export async function downloadZip(tilesBase64: string[], texts: string[]) {
 
 export function downloadSheet(base64: string) {
   const link = document.createElement("a");
-  link.href = `data:image/png;base64,${base64}`;
+  link.href = toImageDataUrl(base64);
   link.download = "sticker-sheet.png";
   document.body.appendChild(link);
   link.click();

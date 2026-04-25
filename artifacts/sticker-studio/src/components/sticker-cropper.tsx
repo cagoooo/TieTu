@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getDefaultGuides, type Guides } from "@/lib/sticker-utils";
+import { getDefaultGuides, toImageDataUrl, type Guides } from "@/lib/sticker-utils";
 
 const MIN_GAP = 0.01;
 
@@ -111,7 +111,7 @@ export function StickerCropper({ sheetBase64, guides, onGuidesChange }: StickerC
         data-testid="sticker-cropper-canvas"
       >
         <img
-          src={`data:image/png;base64,${sheetBase64}`}
+          src={toImageDataUrl(sheetBase64)}
           alt="貼圖整張預覽"
           className="block w-full h-auto pointer-events-none"
           draggable={false}
