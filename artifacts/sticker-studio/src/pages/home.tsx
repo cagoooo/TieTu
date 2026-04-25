@@ -7,6 +7,7 @@ import { StickerHistory } from "@/components/sticker-history";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
+import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-storage";
 
 type AppState = "upload" | "loading" | "result";
 
@@ -19,6 +20,8 @@ export default function Home() {
   const { toast } = useToast();
   const generateMutation = useGenerateStickerSheet();
   const generatorRef = useRef<StickerGeneratorHandle>(null);
+
+  useStickerHistoryStorageNotices();
 
   const hints = [
     "正在分析你的完美角度...",
@@ -60,7 +63,9 @@ export default function Home() {
             theme,
             texts,
             sheetBase64: data.imageBase64,
-          }).catch((err) => console.error("Failed to add history", err));
+          }).catch((err) =>
+            console.error("[home] Failed to add history", err),
+          );
         },
         onError: (error) => {
           clearInterval(hintInterval);
