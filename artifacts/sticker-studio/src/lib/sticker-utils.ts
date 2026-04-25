@@ -2,68 +2,87 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 
 export const DEFAULT_TEXTS = [
-  "收到", "晚安", "天啊", "抱抱", "謝謝", "好的", "好棒棒", "開心YA", 
-  "生氣氣", "做得好", "無言", "害羞", "沒問題", "驚訝", "買買買", "改功課中", 
+  "收到", "晚安", "天啊", "抱抱", "謝謝", "好的", "好棒棒", "開心YA",
+  "生氣氣", "做得好", "無言", "害羞", "沒問題", "驚訝", "買買買", "改功課中",
   "出去玩", "哈哈哈", "白眼", "Hi", "麻煩了", "拜託", "辛苦了", "感謝你"
 ];
 
 export function getThemeTexts(theme: string): string[] {
   if (!theme || theme.trim() === "") return [...DEFAULT_TEXTS];
-  // Simple playful addition
-  const themeSuffixes = [
-    "!", "~", "...", "呀", "啦"
-  ];
   return DEFAULT_TEXTS.map((t, i) => {
-    // Only modify some of them to keep it interesting
     if (i % 3 === 0) return `${theme}${t}`;
     if (i % 4 === 0) return `${t} (${theme})`;
     return t;
   });
 }
 
-export async function splitImage(base64: string): Promise<string[]> {
+export interface Guides {
+  xCuts: number[];
+  yCuts: number[];
+}
+
+export const COLS = 4;
+export const ROWS = 6;
+
+export function getDefaultGuides(): Guides {
+  const xCuts: number[] = [];
+  for (let i = 0; i <= COLS; i++) xCuts.push(i / COLS);
+  const yCuts: number[] = [];
+  for (let i = 0; i <= ROWS; i++) yCuts.push(i / ROWS);
+  return { xCuts, yCuts };
+}
+
+export function loadImage(base64: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      const tileWidth = img.width / 4;
-      const tileHeight = img.height / 6;
-      const tiles: string[] = [];
-      
-      for (let row = 0; row < 6; row++) {
-        for (let col = 0; col < 4; col++) {
-          const canvas = document.createElement("canvas");
-          canvas.width = tileWidth;
-          canvas.height = tileHeight;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
-          
-          ctx.drawImage(
-            img,
-            col * tileWidth, row * tileHeight, tileWidth, tileHeight,
-            0, 0, tileWidth, tileHeight
-          );
-          
-          tiles.push(canvas.toDataURL("image/png"));
-        }
-      }
-      resolve(tiles);
-    };
+    img.onload = () => resolve(img);
     img.onerror = reject;
-    img.src = `data:image/png;base64,${base64}`;
+    img.src = base64.startsWith("data:") ? base64 : `data:image/png;base64,${base64}`;
   });
+}
+
+export async function splitImageWithGuides(
+  base64: string,
+  guides: Guides,
+  imgEl?: HTMLImageElement,
+): Promise<string[]> {
+  const img = imgEl ?? (await loadImage(base64));
+  const tiles: string[] = [];
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const sx = guides.xCuts[col] * img.width;
+      const sy = guides.yCuts[row] * img.height;
+      const sw = (guides.xCuts[col + 1] - guides.xCuts[col]) * img.width;
+      const sh = (guides.yCuts[row + 1] - guides.yCuts[row]) * img.height;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(sw));
+      canvas.height = Math.max(1, Math.round(sh));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      tiles.push(canvas.toDataURL("image/png"));
+    }
+  }
+  return tiles;
+}
+
+export async function splitImage(base64: string): Promise<string[]> {
+  return splitImageWithGuides(base64, getDefaultGuides());
 }
 
 export async function downloadZip(tilesBase64: string[], texts: string[]) {
   const zip = new JSZip();
-  
+
   tilesBase64.forEach((dataUrl, index) => {
-    const base64Data = dataUrl.split(',')[1];
-    const num = (index + 1).toString().padStart(2, '0');
-    // Sanitize label for filename
+    const base64Data = dataUrl.split(",")[1];
+    const num = (index + 1).toString().padStart(2, "0");
     const label = (texts[index] || "貼圖").replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "");
     zip.file(`sticker-${num}-${label}.png`, base64Data, { base64: true });
   });
-  
+
   const content = await zip.generateAsync({ type: "blob" });
   saveAs(content, "stickers.zip");
 }
