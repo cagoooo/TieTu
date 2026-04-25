@@ -21,15 +21,26 @@ export interface Guides {
   yCuts: number[];
 }
 
-export const COLS = 4;
-export const ROWS = 6;
+export const DEFAULT_COLS = 4;
+export const DEFAULT_ROWS = 6;
+export const MIN_COLS = 1;
+export const MAX_COLS = 8;
+export const MIN_ROWS = 1;
+export const MAX_ROWS = 10;
 
-export function getDefaultGuides(): Guides {
+export function getDefaultGuides(cols: number = DEFAULT_COLS, rows: number = DEFAULT_ROWS): Guides {
   const xCuts: number[] = [];
-  for (let i = 0; i <= COLS; i++) xCuts.push(i / COLS);
+  for (let i = 0; i <= cols; i++) xCuts.push(i / cols);
   const yCuts: number[] = [];
-  for (let i = 0; i <= ROWS; i++) yCuts.push(i / ROWS);
+  for (let i = 0; i <= rows; i++) yCuts.push(i / rows);
   return { xCuts, yCuts };
+}
+
+export function getGuideDimensions(guides: Guides): { cols: number; rows: number } {
+  return {
+    cols: Math.max(0, guides.xCuts.length - 1),
+    rows: Math.max(0, guides.yCuts.length - 1),
+  };
 }
 
 export function toImageDataUrl(base64: string, mimeType = "image/png"): string {
@@ -52,9 +63,10 @@ export async function splitImageWithGuides(
 ): Promise<string[]> {
   const img = imgEl ?? (await loadImage(base64));
   const tiles: string[] = [];
+  const { cols, rows } = getGuideDimensions(guides);
 
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
       const sx = guides.xCuts[col] * img.width;
       const sy = guides.yCuts[row] * img.height;
       const sw = (guides.xCuts[col + 1] - guides.xCuts[col]) * img.width;

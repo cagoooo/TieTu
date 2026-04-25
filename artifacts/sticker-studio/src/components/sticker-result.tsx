@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Download, FileArchive, ArrowLeft, Loader2 } from "lucide-react";
+import { Download, FileArchive, ArrowLeft, Loader2, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -8,7 +8,14 @@ import {
   downloadZip,
   downloadSheet,
   getDefaultGuides,
+  getGuideDimensions,
   loadImage,
+  DEFAULT_COLS,
+  DEFAULT_ROWS,
+  MIN_COLS,
+  MAX_COLS,
+  MIN_ROWS,
+  MAX_ROWS,
   type Guides,
 } from "@/lib/sticker-utils";
 import { StickerCropper } from "./sticker-cropper";
@@ -19,8 +26,57 @@ interface StickerResultProps {
   onBack: () => void;
 }
 
+interface StepperProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (n: number) => void;
+  testIdPrefix: string;
+}
+
+function Stepper({ label, value, min, max, onChange, testIdPrefix }: StepperProps) {
+  const dec = () => onChange(Math.max(min, value - 1));
+  const inc = () => onChange(Math.min(max, value + 1));
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium text-foreground/80 w-10">{label}</span>
+      <div className="flex items-center rounded-full border border-border bg-background overflow-hidden">
+        <button
+          type="button"
+          onClick={dec}
+          disabled={value <= min}
+          aria-label={`減少${label}`}
+          className="px-2 py-1 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          data-testid={`${testIdPrefix}-decrement`}
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <span
+          className="px-3 py-1 min-w-[2.5rem] text-center font-bold tabular-nums text-sm"
+          data-testid={`${testIdPrefix}-value`}
+        >
+          {value}
+        </span>
+        <button
+          type="button"
+          onClick={inc}
+          disabled={value >= max}
+          aria-label={`增加${label}`}
+          className="px-2 py-1 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          data-testid={`${testIdPrefix}-increment`}
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps) {
-  const [guides, setGuides] = useState<Guides>(() => getDefaultGuides());
+  const [cols, setCols] = useState<number>(DEFAULT_COLS);
+  const [rows, setRows] = useState<number>(DEFAULT_ROWS);
+  const [guides, setGuides] = useState<Guides>(() => getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
   const [tiles, setTiles] = useState<string[]>([]);
   const [isSplitting, setIsSplitting] = useState(true);
   const [isZipping, setIsZipping] = useState(false);
@@ -28,8 +84,12 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
   const debounceRef = useRef<number | null>(null);
   const splitVersionRef = useRef(0);
 
+  const tileCount = cols * rows;
+
   useEffect(() => {
-    setGuides(getDefaultGuides());
+    setCols(DEFAULT_COLS);
+    setRows(DEFAULT_ROWS);
+    setGuides(getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
     cachedImageRef.current = null;
     let cancelled = false;
     loadImage(sheetBase64)
@@ -41,6 +101,13 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
       cancelled = true;
     };
   }, [sheetBase64]);
+
+  useEffect(() => {
+    const dims = getGuideDimensions(guides);
+    if (dims.cols !== cols || dims.rows !== rows) {
+      setGuides(getDefaultGuides(cols, rows));
+    }
+  }, [cols, rows]);
 
   useEffect(() => {
     if (debounceRef.current !== null) {
@@ -94,6 +161,11 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
     downloadSheet(sheetBase64);
   };
 
+  const previewGridStyle = useMemo(
+    () => ({ gridTemplateColumns: `repeat(${Math.max(1, cols)}, minmax(0, 1fr))` }),
+    [cols],
+  );
+
   const container = {
     hidden: { opacity: 0 },
     show: {
@@ -140,7 +212,7 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
             ) : (
               <FileArchive className="w-4 h-4 mr-2" />
             )}
-            下載 24 張單張 (ZIP)
+            下載 {tileCount} 張單張 (ZIP)
           </Button>
         </div>
       </div>
@@ -155,10 +227,51 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
                   生成結果若有歪斜或邊距不均，可拖曳格線校正後再下載。
                 </p>
               </div>
+
+              <div
+                className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4"
+                data-testid="grid-controls"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold">切割數量</p>
+                    <p className="text-xs text-muted-foreground">
+                      若 AI 產出的張數與預設不同，可在這裡改成符合的欄列數。
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <Stepper
+                      label="欄"
+                      value={cols}
+                      min={MIN_COLS}
+                      max={MAX_COLS}
+                      onChange={setCols}
+                      testIdPrefix="cols-stepper"
+                    />
+                    <Stepper
+                      label="列"
+                      value={rows}
+                      min={MIN_ROWS}
+                      max={MAX_ROWS}
+                      onChange={setRows}
+                      testIdPrefix="rows-stepper"
+                    />
+                    <span
+                      className="text-xs text-muted-foreground tabular-nums"
+                      data-testid="grid-summary"
+                    >
+                      = {tileCount} 張
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <StickerCropper
                 sheetBase64={sheetBase64}
                 guides={guides}
                 onGuidesChange={setGuides}
+                resetCols={cols}
+                resetRows={rows}
               />
             </CardContent>
           </Card>
@@ -168,7 +281,7 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
           <Card className="border-2 border-primary/20 shadow-xl rounded-3xl lg:sticky lg:top-8">
             <CardContent className="p-5 sm:p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold">切割預覽（24 張）</h3>
+                <h3 className="text-lg font-bold">切割預覽（{tileCount} 張）</h3>
                 {isSplitting && (
                   <span className="flex items-center text-xs text-muted-foreground">
                     <Loader2 className="w-3 h-3 mr-1 animate-spin" />
@@ -181,7 +294,8 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
                   variants={container}
                   initial="hidden"
                   animate="show"
-                  className="grid grid-cols-4 gap-2"
+                  className="grid gap-2"
+                  style={previewGridStyle}
                   data-testid="tile-preview-grid"
                 >
                   {tiles.map((tile, i) => (
@@ -199,7 +313,10 @@ export function StickerResult({ sheetBase64, texts, onBack }: StickerResultProps
                     </motion.div>
                   ))}
                   {tiles.length === 0 && (
-                    <div className="col-span-4 h-32 flex items-center justify-center text-sm text-muted-foreground">
+                    <div
+                      className="h-32 flex items-center justify-center text-sm text-muted-foreground"
+                      style={{ gridColumn: `span ${Math.max(1, cols)} / span ${Math.max(1, cols)}` }}
+                    >
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       正在裁切貼圖...
                     </div>

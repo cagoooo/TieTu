@@ -9,6 +9,8 @@ interface StickerCropperProps {
   sheetBase64: string;
   guides: Guides;
   onGuidesChange: (g: Guides) => void;
+  resetCols?: number;
+  resetRows?: number;
 }
 
 type Axis = "x" | "y";
@@ -18,7 +20,13 @@ interface DragState {
   index: number;
 }
 
-export function StickerCropper({ sheetBase64, guides, onGuidesChange }: StickerCropperProps) {
+export function StickerCropper({
+  sheetBase64,
+  guides,
+  onGuidesChange,
+  resetCols,
+  resetRows,
+}: StickerCropperProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
@@ -84,7 +92,7 @@ export function StickerCropper({ sheetBase64, guides, onGuidesChange }: StickerC
     }
   };
 
-  const reset = () => onGuidesChange(getDefaultGuides());
+  const reset = () => onGuidesChange(getDefaultGuides(resetCols, resetRows));
 
   return (
     <div className="space-y-3">
