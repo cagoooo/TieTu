@@ -194,12 +194,19 @@ export const LINE_TAB_W = 96;
 export const LINE_TAB_H = 74;
 
 const MATTE_COLOR: [number, number, number] = [0x7f, 0x7f, 0x7f];
-const MATTE_TOLERANCE = 28;
+export const DEFAULT_MATTE_TOLERANCE = 28;
+export const MATTE_TOLERANCE_MIN = 0;
+export const MATTE_TOLERANCE_MAX = 96;
+
+export function clampMatteTolerance(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MATTE_TOLERANCE;
+  return Math.max(MATTE_TOLERANCE_MIN, Math.min(MATTE_TOLERANCE_MAX, Math.round(value)));
+}
 
 function removeMatteFromEdges(
   canvas: HTMLCanvasElement,
   target: [number, number, number] = MATTE_COLOR,
-  tolerance: number = MATTE_TOLERANCE,
+  tolerance: number = DEFAULT_MATTE_TOLERANCE,
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -315,11 +322,54 @@ export interface LineExportPackage {
   tabPngBase64: string;
 }
 
+function extractTransparentTileCanvas(
+  img: HTMLImageElement,
+  guides: Guides,
+  index: number,
+  adjustment?: TileAdjustment,
+  tolerance: number = DEFAULT_MATTE_TOLERANCE,
+): { canvas: HTMLCanvasElement; bounds: { x: number; y: number; w: number; h: number } | null } | null {
+  const { cols, rows } = getGuideDimensions(guides);
+  const total = cols * rows;
+  if (index < 0 || index >= total) return null;
+  const col = index % cols;
+  const row = Math.floor(index / cols);
+  const sx = guides.xCuts[col] * img.width;
+  const sy = guides.yCuts[row] * img.height;
+  const sw = (guides.xCuts[col + 1] - guides.xCuts[col]) * img.width;
+  const sh = (guides.yCuts[row + 1] - guides.yCuts[row]) * img.height;
+  const tileCanvas = drawAdjustedTile(img, sx, sy, sw, sh, sw, sh, adjustment);
+  if (tileCanvas.width === 0 || tileCanvas.height === 0) return null;
+  removeMatteFromEdges(tileCanvas, MATTE_COLOR, clampMatteTolerance(tolerance));
+  const bounds = getOpaqueBounds(tileCanvas);
+  return { canvas: tileCanvas, bounds };
+}
+
+export async function buildLineTilePreview(
+  base64: string,
+  guides: Guides,
+  index: number,
+  targetW: number,
+  targetH: number,
+  imgEl?: HTMLImageElement,
+  adjustment?: TileAdjustment,
+  tolerance: number = DEFAULT_MATTE_TOLERANCE,
+): Promise<string | null> {
+  const img = imgEl ?? (await loadImage(base64));
+  const extracted = extractTransparentTileCanvas(img, guides, index, adjustment, tolerance);
+  if (!extracted) return null;
+  const fitted = fitOnTransparentCanvas(extracted.canvas, targetW, targetH, extracted.bounds);
+  return fitted.toDataURL("image/png");
+}
+
 export async function buildLineStickerPackage(
   base64: string,
   guides: Guides,
   imgEl?: HTMLImageElement,
   adjustments?: TileAdjustments,
+  mainTileIndex: number = 0,
+  tabTileIndex: number = mainTileIndex,
+  tolerance: number = DEFAULT_MATTE_TOLERANCE,
 ): Promise<LineExportPackage> {
   const img = imgEl ?? (await loadImage(base64));
   const { cols, rows } = getGuideDimensions(guides);
@@ -330,9 +380,15 @@ export async function buildLineStickerPackage(
     );
   }
 
+  const safeMainIndex = Math.min(Math.max(0, Math.floor(mainTileIndex)), total - 1);
+  const safeTabIndex = Math.min(Math.max(0, Math.floor(tabTileIndex)), total - 1);
+  const safeTolerance = clampMatteTolerance(tolerance);
+
   const tiles: LineExportTile[] = [];
   let mainSourceCanvas: HTMLCanvasElement | null = null;
   let mainBounds: { x: number; y: number; w: number; h: number } | null = null;
+  let tabSourceCanvas: HTMLCanvasElement | null = null;
+  let tabBounds: { x: number; y: number; w: number; h: number } | null = null;
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -345,21 +401,29 @@ export async function buildLineStickerPackage(
       const tileCanvas = drawAdjustedTile(img, sx, sy, sw, sh, sw, sh, adjustments?.[idx]);
       if (tileCanvas.width === 0 || tileCanvas.height === 0) continue;
 
-      removeMatteFromEdges(tileCanvas);
+      removeMatteFromEdges(tileCanvas, MATTE_COLOR, safeTolerance);
       const bounds = getOpaqueBounds(tileCanvas);
       const fitted = fitOnTransparentCanvas(tileCanvas, LINE_TILE_W, LINE_TILE_H, bounds);
       const dataUrl = fitted.toDataURL("image/png");
       tiles.push({ pngBase64: dataUrl.split(",")[1] });
 
-      if (!mainSourceCanvas) {
+      if (idx === safeMainIndex) {
         mainSourceCanvas = tileCanvas;
         mainBounds = bounds;
+      }
+      if (idx === safeTabIndex) {
+        tabSourceCanvas = tileCanvas;
+        tabBounds = bounds;
       }
     }
   }
 
   if (!mainSourceCanvas) {
     throw new Error("無法產生主圖：找不到任何貼圖內容。");
+  }
+  if (!tabSourceCanvas) {
+    tabSourceCanvas = mainSourceCanvas;
+    tabBounds = mainBounds;
   }
 
   const mainCanvas = fitOnTransparentCanvas(
@@ -369,10 +433,10 @@ export async function buildLineStickerPackage(
     mainBounds,
   );
   const tabCanvas = fitOnTransparentCanvas(
-    mainSourceCanvas,
+    tabSourceCanvas,
     LINE_TAB_W,
     LINE_TAB_H,
-    mainBounds,
+    tabBounds,
   );
 
   return {

@@ -41,6 +41,7 @@ import {
 import { StickerCropper } from "./sticker-cropper";
 import { StickerHistory } from "./sticker-history";
 import { StickerLightbox } from "./sticker-lightbox";
+import { StickerLineExportDialog } from "./sticker-line-export-dialog";
 import { StickerTileEditor, type TileSourceRect } from "./sticker-tile-editor";
 import { useToast } from "@/hooks/use-toast";
 import type { HistoryEntry } from "@/lib/sticker-history";
@@ -111,6 +112,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [isSplitting, setIsSplitting] = useState(true);
   const [isZipping, setIsZipping] = useState(false);
   const [isLineExporting, setIsLineExporting] = useState(false);
+  const [lineExportOpen, setLineExportOpen] = useState(false);
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
   const debounceRef = useRef<number | null>(null);
   const splitVersionRef = useRef(0);
@@ -270,7 +272,15 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     downloadSheet(sheetBase64);
   };
 
-  const handleDownloadLinePack = async () => {
+  const handleOpenLineExport = () => {
+    setLineExportOpen(true);
+  };
+
+  const handleConfirmLineExport = async (
+    mainTileIndex: number,
+    tabTileIndex: number,
+    tolerance: number,
+  ) => {
     setIsLineExporting(true);
     try {
       const pkg = await buildLineStickerPackage(
@@ -278,12 +288,17 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         guides,
         cachedImageRef.current ?? undefined,
         tileAdjustments,
+        mainTileIndex,
+        tabTileIndex,
+        tolerance,
       );
       await downloadLineStickerZip(pkg);
+      const sameAsMain = mainTileIndex === tabTileIndex;
       toast({
         title: "LINE 上架版已下載",
-        description: `已輸出 ${LINE_STICKER_COUNT} 張 ${LINE_TILE_W}×${LINE_TILE_H} 透明 PNG，並附上主圖與分頁圖。`,
+        description: `已輸出 ${LINE_STICKER_COUNT} 張 ${LINE_TILE_W}×${LINE_TILE_H} 透明 PNG。主圖使用第 ${mainTileIndex + 1} 張，分頁圖${sameAsMain ? "沿用主圖" : `使用第 ${tabTileIndex + 1} 張`}。`,
       });
+      setLineExportOpen(false);
     } catch (error) {
       console.error("LINE export failed", error);
       toast({
@@ -354,11 +369,11 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
             下載 {tileCount} 張單張 (ZIP)
           </Button>
           <Button
-            onClick={handleDownloadLinePack}
+            onClick={handleOpenLineExport}
             disabled={isLineExporting || !isLineEligible || tiles.length === 0}
             title={
               isLineEligible
-                ? `輸出符合 LINE 個人原創貼圖規格的素材包（${LINE_TILE_W}×${LINE_TILE_H}、主圖 ${LINE_MAIN_SIZE}×${LINE_MAIN_SIZE}、分頁圖 ${LINE_TAB_W}×${LINE_TAB_H}）`
+                ? `挑選 LINE 主圖與分頁圖，輸出符合規格的素材包（${LINE_TILE_W}×${LINE_TILE_H}、主圖 ${LINE_MAIN_SIZE}×${LINE_MAIN_SIZE}、分頁圖 ${LINE_TAB_W}×${LINE_TAB_H}）`
                 : `LINE 規格需要剛好 ${LINE_STICKER_COUNT} 張，目前為 ${tileCount} 張。`
             }
             className="rounded-full font-bold shadow-md bg-[#06C755] hover:bg-[#05B14C] text-white"
@@ -560,6 +575,21 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
             handleTileAdjustmentChange(editingTileIndex, next);
           }
         }}
+      />
+
+      <StickerLineExportDialog
+        open={lineExportOpen}
+        onOpenChange={(open) => {
+          if (!isLineExporting) setLineExportOpen(open);
+        }}
+        tiles={tiles}
+        texts={texts}
+        sheetBase64={sheetBase64}
+        guides={guides}
+        adjustments={tileAdjustments}
+        sourceImage={imageReady ? cachedImageRef.current : null}
+        isExporting={isLineExporting}
+        onConfirm={handleConfirmLineExport}
       />
 
       <div className="mt-10">
