@@ -34,6 +34,7 @@ const STICKER_RATE_LIMIT_PER_DAY = readPositiveInt(
 );
 
 const stickerRateLimiter = rateLimit({
+  bucket: "sticker:generate",
   perMinute: STICKER_RATE_LIMIT_PER_MINUTE,
   perDay: STICKER_RATE_LIMIT_PER_DAY,
 });
