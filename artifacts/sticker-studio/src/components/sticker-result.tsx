@@ -8,7 +8,7 @@ import {
   Minus,
   Plus,
   PackageCheck,
-  SlidersHorizontal,
+  ZoomIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +40,7 @@ import {
 } from "@/lib/sticker-utils";
 import { StickerCropper } from "./sticker-cropper";
 import { StickerHistory } from "./sticker-history";
+import { StickerLightbox } from "./sticker-lightbox";
 import { StickerTileEditor, type TileSourceRect } from "./sticker-tile-editor";
 import { useToast } from "@/hooks/use-toast";
 import type { HistoryEntry } from "@/lib/sticker-history";
@@ -105,6 +106,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [tiles, setTiles] = useState<string[]>([]);
   const [tileAdjustments, setTileAdjustments] = useState<TileAdjustments>({});
   const [editingTileIndex, setEditingTileIndex] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [imageReady, setImageReady] = useState(false);
   const [isSplitting, setIsSplitting] = useState(true);
   const [isZipping, setIsZipping] = useState(false);
@@ -123,6 +125,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     setGuides(getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
     setTileAdjustments({});
     setEditingTileIndex(null);
+    setLightboxIndex(null);
     cachedImageRef.current = null;
     setImageReady(false);
     let cancelled = false;
@@ -145,6 +148,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
       setGuides(getDefaultGuides(cols, rows));
       setTileAdjustments({});
       setEditingTileIndex(null);
+      setLightboxIndex(null);
     }
   }, [cols, rows]);
 
@@ -229,6 +233,21 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     () => Object.values(tileAdjustments).filter((a) => !isTileAdjustmentDefault(a)).length,
     [tileAdjustments],
   );
+
+  const adjustedTileSet = useMemo(() => {
+    const set = new Set<number>();
+    for (const [key, adj] of Object.entries(tileAdjustments)) {
+      if (!isTileAdjustmentDefault(adj)) set.add(Number(key));
+    }
+    return set;
+  }, [tileAdjustments]);
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    if (lightboxIndex >= tiles.length) {
+      setLightboxIndex(tiles.length > 0 ? tiles.length - 1 : null);
+    }
+  }, [lightboxIndex, tiles.length]);
 
   const handleDownloadZip = async () => {
     setIsZipping(true);
@@ -453,11 +472,10 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                       >
                         <button
                           type="button"
-                          onClick={() => setEditingTileIndex(i)}
-                          disabled={!imageReady}
-                          className="group relative block w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#7F7F7F] disabled:cursor-wait"
-                          aria-label={`微調第 ${i + 1} 張${texts[i] ? `「${texts[i]}」` : ""}`}
-                          data-testid={`tile-edit-${i}`}
+                          onClick={() => setLightboxIndex(i)}
+                          className="group relative block w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#7F7F7F]"
+                          aria-label={`放大檢視第 ${i + 1} 張${texts[i] ? `「${texts[i]}」` : ""}`}
+                          data-testid={`tile-preview-${i}`}
                         >
                           <img
                             src={tile}
@@ -467,8 +485,8 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                           />
                           <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                             <span className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 rounded-full bg-white/95 text-foreground px-2 py-1 text-[10px] font-bold shadow">
-                              <SlidersHorizontal className="w-3 h-3" />
-                              微調
+                              <ZoomIn className="w-3 h-3" />
+                              點擊放大
                             </span>
                           </div>
                           {adjusted && (
@@ -495,7 +513,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                 </motion.div>
               </div>
               <p className="text-xs text-muted-foreground mt-4 text-center leading-relaxed">
-                這份預覽會即時依照你調整的切割線更新；點任一張即可進入單張微調。
+                這份預覽會即時依照你調整的切割線更新；點任一張可放大檢視，並可在彈窗內進入單張微調。
                 {adjustedTileCount > 0 && (
                   <>
                     <br />
@@ -509,6 +527,22 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
           </Card>
         </div>
       </div>
+
+      <StickerLightbox
+        open={lightboxIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setLightboxIndex(null);
+        }}
+        tiles={tiles}
+        texts={texts}
+        index={lightboxIndex}
+        onIndexChange={setLightboxIndex}
+        adjustedSet={adjustedTileSet}
+        onEdit={(i) => {
+          setLightboxIndex(null);
+          setEditingTileIndex(i);
+        }}
+      />
 
       <StickerTileEditor
         open={editingTileIndex !== null}
