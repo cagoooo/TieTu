@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Download, FileArchive, ArrowLeft, Loader2, Minus, Plus, PackageCheck } from "lucide-react";
+import {
+  Download,
+  FileArchive,
+  ArrowLeft,
+  Loader2,
+  Minus,
+  Plus,
+  PackageCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -12,6 +21,7 @@ import {
   getDefaultGuides,
   getGuideDimensions,
   loadImage,
+  isTileAdjustmentDefault,
   DEFAULT_COLS,
   DEFAULT_ROWS,
   MIN_COLS,
@@ -25,9 +35,12 @@ import {
   LINE_TAB_W,
   LINE_TAB_H,
   type Guides,
+  type TileAdjustment,
+  type TileAdjustments,
 } from "@/lib/sticker-utils";
 import { StickerCropper } from "./sticker-cropper";
 import { StickerHistory } from "./sticker-history";
+import { StickerTileEditor, type TileSourceRect } from "./sticker-tile-editor";
 import { useToast } from "@/hooks/use-toast";
 import type { HistoryEntry } from "@/lib/sticker-history";
 
@@ -90,6 +103,9 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [rows, setRows] = useState<number>(DEFAULT_ROWS);
   const [guides, setGuides] = useState<Guides>(() => getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
   const [tiles, setTiles] = useState<string[]>([]);
+  const [tileAdjustments, setTileAdjustments] = useState<TileAdjustments>({});
+  const [editingTileIndex, setEditingTileIndex] = useState<number | null>(null);
+  const [imageReady, setImageReady] = useState(false);
   const [isSplitting, setIsSplitting] = useState(true);
   const [isZipping, setIsZipping] = useState(false);
   const [isLineExporting, setIsLineExporting] = useState(false);
@@ -105,11 +121,17 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     setCols(DEFAULT_COLS);
     setRows(DEFAULT_ROWS);
     setGuides(getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
+    setTileAdjustments({});
+    setEditingTileIndex(null);
     cachedImageRef.current = null;
+    setImageReady(false);
     let cancelled = false;
     loadImage(sheetBase64)
       .then((img) => {
-        if (!cancelled) cachedImageRef.current = img;
+        if (!cancelled) {
+          cachedImageRef.current = img;
+          setImageReady(true);
+        }
       })
       .catch((err) => console.error("Failed to load sheet image", err));
     return () => {
@@ -121,6 +143,8 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     const dims = getGuideDimensions(guides);
     if (dims.cols !== cols || dims.rows !== rows) {
       setGuides(getDefaultGuides(cols, rows));
+      setTileAdjustments({});
+      setEditingTileIndex(null);
     }
   }, [cols, rows]);
 
@@ -136,6 +160,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
           sheetBase64,
           guides,
           cachedImageRef.current ?? undefined,
+          tileAdjustments,
         );
         if (splitVersionRef.current === myVersion) {
           setTiles(result);
@@ -154,7 +179,56 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         debounceRef.current = null;
       }
     };
-  }, [sheetBase64, guides]);
+  }, [sheetBase64, guides, tileAdjustments]);
+
+  const handleTileAdjustmentChange = useCallback(
+    (index: number, next: TileAdjustment) => {
+      setTileAdjustments((prev) => {
+        if (isTileAdjustmentDefault(next)) {
+          if (!(index in prev)) return prev;
+          const rest = { ...prev };
+          delete rest[index];
+          return rest;
+        }
+        const cur = prev[index];
+        if (
+          cur &&
+          cur.rotation === next.rotation &&
+          cur.offsetX === next.offsetX &&
+          cur.offsetY === next.offsetY &&
+          cur.scale === next.scale
+        ) {
+          return prev;
+        }
+        return { ...prev, [index]: next };
+      });
+    },
+    [],
+  );
+
+  const editingSourceRect = useMemo<TileSourceRect | null>(() => {
+    if (editingTileIndex === null) return null;
+    const img = cachedImageRef.current;
+    if (!img) return null;
+    const col = editingTileIndex % cols;
+    const row = Math.floor(editingTileIndex / cols);
+    if (col >= cols || row >= rows) return null;
+    const sx = guides.xCuts[col] * img.width;
+    const sy = guides.yCuts[row] * img.height;
+    const sw = (guides.xCuts[col + 1] - guides.xCuts[col]) * img.width;
+    const sh = (guides.yCuts[row + 1] - guides.yCuts[row]) * img.height;
+    return { sx, sy, sw, sh };
+  }, [editingTileIndex, cols, rows, guides, imageReady]);
+
+  const editingAdjustment =
+    editingTileIndex !== null
+      ? tileAdjustments[editingTileIndex] ?? { rotation: 0, offsetX: 0, offsetY: 0, scale: 1 }
+      : { rotation: 0, offsetX: 0, offsetY: 0, scale: 1 };
+
+  const adjustedTileCount = useMemo(
+    () => Object.values(tileAdjustments).filter((a) => !isTileAdjustmentDefault(a)).length,
+    [tileAdjustments],
+  );
 
   const handleDownloadZip = async () => {
     setIsZipping(true);
@@ -163,6 +237,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         sheetBase64,
         guides,
         cachedImageRef.current ?? undefined,
+        tileAdjustments,
       );
       await downloadZip(fresh, texts);
     } catch (error) {
@@ -183,6 +258,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         sheetBase64,
         guides,
         cachedImageRef.current ?? undefined,
+        tileAdjustments,
       );
       await downloadLineStickerZip(pkg);
       toast({
@@ -367,20 +443,46 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                   style={previewGridStyle}
                   data-testid="tile-preview-grid"
                 >
-                  {tiles.map((tile, i) => (
-                    <motion.div
-                      key={i}
-                      variants={item}
-                      className="relative aspect-square rounded-lg overflow-hidden shadow bg-white/10"
-                    >
-                      <img
-                        src={tile}
-                        alt={texts[i] || `Sticker ${i + 1}`}
-                        className="w-full h-full object-contain"
-                        data-testid={`tile-${i}`}
-                      />
-                    </motion.div>
-                  ))}
+                  {tiles.map((tile, i) => {
+                    const adjusted = !isTileAdjustmentDefault(tileAdjustments[i]);
+                    return (
+                      <motion.div
+                        key={i}
+                        variants={item}
+                        className="relative aspect-square rounded-lg overflow-hidden shadow bg-white/10"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setEditingTileIndex(i)}
+                          disabled={!imageReady}
+                          className="group relative block w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#7F7F7F] disabled:cursor-wait"
+                          aria-label={`微調第 ${i + 1} 張${texts[i] ? `「${texts[i]}」` : ""}`}
+                          data-testid={`tile-edit-${i}`}
+                        >
+                          <img
+                            src={tile}
+                            alt={texts[i] || `Sticker ${i + 1}`}
+                            className="w-full h-full object-contain"
+                            data-testid={`tile-${i}`}
+                          />
+                          <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 rounded-full bg-white/95 text-foreground px-2 py-1 text-[10px] font-bold shadow">
+                              <SlidersHorizontal className="w-3 h-3" />
+                              微調
+                            </span>
+                          </div>
+                          {adjusted && (
+                            <span
+                              className="absolute top-1 right-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 shadow"
+                              data-testid={`tile-adjusted-badge-${i}`}
+                            >
+                              已微調
+                            </span>
+                          )}
+                        </button>
+                      </motion.div>
+                    );
+                  })}
                   {tiles.length === 0 && (
                     <div
                       className="h-32 flex items-center justify-center text-sm text-muted-foreground"
@@ -393,14 +495,38 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                 </motion.div>
               </div>
               <p className="text-xs text-muted-foreground mt-4 text-center leading-relaxed">
-                這份預覽會即時依照你調整的切割線更新；
-                <br />
-                確認滿意後再下載 ZIP。
+                這份預覽會即時依照你調整的切割線更新；點任一張即可進入單張微調。
+                {adjustedTileCount > 0 && (
+                  <>
+                    <br />
+                    <span data-testid="adjusted-summary">
+                      已微調 {adjustedTileCount} 張，下載 ZIP 與 LINE 上架版時會一起套用。
+                    </span>
+                  </>
+                )}
               </p>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <StickerTileEditor
+        open={editingTileIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingTileIndex(null);
+        }}
+        tileIndex={editingTileIndex}
+        totalTiles={tileCount}
+        label={editingTileIndex !== null ? texts[editingTileIndex] : undefined}
+        sourceImage={imageReady ? cachedImageRef.current : null}
+        sourceRect={editingSourceRect}
+        adjustment={editingAdjustment}
+        onChange={(next) => {
+          if (editingTileIndex !== null) {
+            handleTileAdjustmentChange(editingTileIndex, next);
+          }
+        }}
+      />
 
       <div className="mt-10">
         <StickerHistory onOpen={onOpenHistory} />

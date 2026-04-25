@@ -28,6 +28,93 @@ export const MAX_COLS = 8;
 export const MIN_ROWS = 1;
 export const MAX_ROWS = 10;
 
+export interface TileAdjustment {
+  rotation: number;
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+}
+
+export const DEFAULT_TILE_ADJUSTMENT: TileAdjustment = {
+  rotation: 0,
+  offsetX: 0,
+  offsetY: 0,
+  scale: 1,
+};
+
+export const TILE_ROTATION_MAX = 15;
+export const TILE_OFFSET_MAX = 0.15;
+export const TILE_SCALE_MIN = 0.8;
+export const TILE_SCALE_MAX = 1.2;
+const TILE_SOURCE_PAD = 0.3;
+
+export type TileAdjustments = Record<number, TileAdjustment>;
+
+export function isTileAdjustmentDefault(adj: TileAdjustment | undefined | null): boolean {
+  if (!adj) return true;
+  return (
+    adj.rotation === 0 &&
+    adj.offsetX === 0 &&
+    adj.offsetY === 0 &&
+    adj.scale === 1
+  );
+}
+
+export function clampTileAdjustment(adj: TileAdjustment): TileAdjustment {
+  return {
+    rotation: Math.max(-TILE_ROTATION_MAX, Math.min(TILE_ROTATION_MAX, adj.rotation)),
+    offsetX: Math.max(-TILE_OFFSET_MAX, Math.min(TILE_OFFSET_MAX, adj.offsetX)),
+    offsetY: Math.max(-TILE_OFFSET_MAX, Math.min(TILE_OFFSET_MAX, adj.offsetY)),
+    scale: Math.max(TILE_SCALE_MIN, Math.min(TILE_SCALE_MAX, adj.scale)),
+  };
+}
+
+export function drawAdjustedTile(
+  img: HTMLImageElement,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+  outW: number,
+  outH: number,
+  adj?: TileAdjustment,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(outW));
+  canvas.height = Math.max(1, Math.round(outH));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+
+  const a = adj ?? DEFAULT_TILE_ADJUSTMENT;
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  if (sw <= 0 || sh <= 0) return canvas;
+
+  const padX = sw * TILE_SOURCE_PAD;
+  const padY = sh * TILE_SOURCE_PAD;
+  const srcX = Math.max(0, sx - padX);
+  const srcY = Math.max(0, sy - padY);
+  const srcRight = Math.min(img.width, sx + sw + padX);
+  const srcBottom = Math.min(img.height, sy + sh + padY);
+  const srcW = srcRight - srcX;
+  const srcH = srcBottom - srcY;
+  if (srcW <= 0 || srcH <= 0) return canvas;
+
+  const drawW = (srcW / sw) * cw;
+  const drawH = (srcH / sh) * ch;
+  const drawX = -cw / 2 - ((sx - srcX) / sw) * cw;
+  const drawY = -ch / 2 - ((sy - srcY) / sh) * ch;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.translate(cw / 2 + a.offsetX * cw, ch / 2 + a.offsetY * ch);
+  ctx.rotate((a.rotation * Math.PI) / 180);
+  ctx.scale(a.scale, a.scale);
+  ctx.drawImage(img, srcX, srcY, srcW, srcH, drawX, drawY, drawW, drawH);
+  return canvas;
+}
+
 export function getDefaultGuides(cols: number = DEFAULT_COLS, rows: number = DEFAULT_ROWS): Guides {
   const xCuts: number[] = [];
   for (let i = 0; i <= cols; i++) xCuts.push(i / cols);
@@ -60,6 +147,7 @@ export async function splitImageWithGuides(
   base64: string,
   guides: Guides,
   imgEl?: HTMLImageElement,
+  adjustments?: TileAdjustments,
 ): Promise<string[]> {
   const img = imgEl ?? (await loadImage(base64));
   const tiles: string[] = [];
@@ -67,18 +155,13 @@ export async function splitImageWithGuides(
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
+      const idx = row * cols + col;
       const sx = guides.xCuts[col] * img.width;
       const sy = guides.yCuts[row] * img.height;
       const sw = (guides.xCuts[col + 1] - guides.xCuts[col]) * img.width;
       const sh = (guides.yCuts[row + 1] - guides.yCuts[row]) * img.height;
 
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(sw));
-      canvas.height = Math.max(1, Math.round(sh));
-      const ctx = canvas.getContext("2d");
-      if (!ctx) continue;
-
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      const canvas = drawAdjustedTile(img, sx, sy, sw, sh, sw, sh, adjustments?.[idx]);
       tiles.push(canvas.toDataURL("image/png"));
     }
   }
@@ -236,6 +319,7 @@ export async function buildLineStickerPackage(
   base64: string,
   guides: Guides,
   imgEl?: HTMLImageElement,
+  adjustments?: TileAdjustments,
 ): Promise<LineExportPackage> {
   const img = imgEl ?? (await loadImage(base64));
   const { cols, rows } = getGuideDimensions(guides);
@@ -252,17 +336,14 @@ export async function buildLineStickerPackage(
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
+      const idx = row * cols + col;
       const sx = guides.xCuts[col] * img.width;
       const sy = guides.yCuts[row] * img.height;
       const sw = (guides.xCuts[col + 1] - guides.xCuts[col]) * img.width;
       const sh = (guides.yCuts[row + 1] - guides.yCuts[row]) * img.height;
 
-      const tileCanvas = document.createElement("canvas");
-      tileCanvas.width = Math.max(1, Math.round(sw));
-      tileCanvas.height = Math.max(1, Math.round(sh));
-      const tctx = tileCanvas.getContext("2d");
-      if (!tctx) continue;
-      tctx.drawImage(img, sx, sy, sw, sh, 0, 0, tileCanvas.width, tileCanvas.height);
+      const tileCanvas = drawAdjustedTile(img, sx, sy, sw, sh, sw, sh, adjustments?.[idx]);
+      if (tileCanvas.width === 0 || tileCanvas.height === 0) continue;
 
       removeMatteFromEdges(tileCanvas);
       const bounds = getOpaqueBounds(tileCanvas);
