@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Download, FileArchive, ArrowLeft, Loader2, Minus, Plus } from "lucide-react";
+import { Download, FileArchive, ArrowLeft, Loader2, Minus, Plus, PackageCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   splitImageWithGuides,
   downloadZip,
   downloadSheet,
+  buildLineStickerPackage,
+  downloadLineStickerZip,
   getDefaultGuides,
   getGuideDimensions,
   loadImage,
@@ -16,10 +18,17 @@ import {
   MAX_COLS,
   MIN_ROWS,
   MAX_ROWS,
+  LINE_STICKER_COUNT,
+  LINE_TILE_W,
+  LINE_TILE_H,
+  LINE_MAIN_SIZE,
+  LINE_TAB_W,
+  LINE_TAB_H,
   type Guides,
 } from "@/lib/sticker-utils";
 import { StickerCropper } from "./sticker-cropper";
 import { StickerHistory } from "./sticker-history";
+import { useToast } from "@/hooks/use-toast";
 import type { HistoryEntry } from "@/lib/sticker-history";
 
 interface StickerResultProps {
@@ -83,11 +92,14 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [tiles, setTiles] = useState<string[]>([]);
   const [isSplitting, setIsSplitting] = useState(true);
   const [isZipping, setIsZipping] = useState(false);
+  const [isLineExporting, setIsLineExporting] = useState(false);
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
   const debounceRef = useRef<number | null>(null);
   const splitVersionRef = useRef(0);
+  const { toast } = useToast();
 
   const tileCount = cols * rows;
+  const isLineEligible = tileCount === LINE_STICKER_COUNT;
 
   useEffect(() => {
     setCols(DEFAULT_COLS);
@@ -164,6 +176,34 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     downloadSheet(sheetBase64);
   };
 
+  const handleDownloadLinePack = async () => {
+    setIsLineExporting(true);
+    try {
+      const pkg = await buildLineStickerPackage(
+        sheetBase64,
+        guides,
+        cachedImageRef.current ?? undefined,
+      );
+      await downloadLineStickerZip(pkg);
+      toast({
+        title: "LINE 上架版已下載",
+        description: `已輸出 ${LINE_STICKER_COUNT} 張 ${LINE_TILE_W}×${LINE_TILE_H} 透明 PNG，並附上主圖與分頁圖。`,
+      });
+    } catch (error) {
+      console.error("LINE export failed", error);
+      toast({
+        title: "無法輸出 LINE 上架版",
+        description:
+          error instanceof Error
+            ? error.message
+            : `請確認切割數量為剛好 ${LINE_STICKER_COUNT} 張後再試。`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLineExporting(false);
+    }
+  };
+
   const previewGridStyle = useMemo(
     () => ({ gridTemplateColumns: `repeat(${Math.max(1, cols)}, minmax(0, 1fr))` }),
     [cols],
@@ -207,7 +247,8 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
           <Button
             onClick={handleDownloadZip}
             disabled={isZipping || tiles.length === 0}
-            className="rounded-full font-bold shadow-md"
+            variant="outline"
+            className="rounded-full border-primary/20 hover:bg-primary/10 font-bold shadow-sm"
             data-testid="button-download-zip"
           >
             {isZipping ? (
@@ -217,8 +258,33 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
             )}
             下載 {tileCount} 張單張 (ZIP)
           </Button>
+          <Button
+            onClick={handleDownloadLinePack}
+            disabled={isLineExporting || !isLineEligible || tiles.length === 0}
+            title={
+              isLineEligible
+                ? `輸出符合 LINE 個人原創貼圖規格的素材包（${LINE_TILE_W}×${LINE_TILE_H}、主圖 ${LINE_MAIN_SIZE}×${LINE_MAIN_SIZE}、分頁圖 ${LINE_TAB_W}×${LINE_TAB_H}）`
+                : `LINE 規格需要剛好 ${LINE_STICKER_COUNT} 張，目前為 ${tileCount} 張。`
+            }
+            className="rounded-full font-bold shadow-md bg-[#06C755] hover:bg-[#05B14C] text-white"
+            data-testid="button-download-line"
+          >
+            {isLineExporting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <PackageCheck className="w-4 h-4 mr-2" />
+            )}
+            下載 LINE 上架版 (ZIP)
+          </Button>
         </div>
       </div>
+      {!isLineEligible && (
+        <div className="-mt-4 mb-6 text-center">
+          <p className="text-xs text-muted-foreground" data-testid="line-eligibility-note">
+            想輸出 LINE 上架版？請將切割數量調整為剛好 {LINE_STICKER_COUNT} 張（目前為 {tileCount} 張）。
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-7">
