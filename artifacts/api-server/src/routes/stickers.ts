@@ -1,0 +1,168 @@
+import { Router, type IRouter } from "express";
+import {
+  GenerateStickerSheetBody,
+  GenerateStickerSheetResponse,
+} from "@workspace/api-zod";
+import { editImagesFromBuffers } from "@workspace/integrations-openai-ai-server/image";
+import { logger } from "../lib/logger";
+
+const router: IRouter = Router();
+
+interface DecodedImage {
+  buffer: Buffer;
+  mimeType: string;
+  filename: string;
+}
+
+function detectMimeFromMagicBytes(buffer: Buffer): string | null {
+  if (buffer.length < 12) return null;
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  // WEBP: "RIFF"...."WEBP"
+  if (
+    buffer.toString("ascii", 0, 4) === "RIFF" &&
+    buffer.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  // HEIC/HEIF: "ftyp" at offset 4 with brand heic/heix/hevc/mif1
+  if (buffer.toString("ascii", 4, 8) === "ftyp") {
+    const brand = buffer.toString("ascii", 8, 12).toLowerCase();
+    if (
+      brand.startsWith("heic") ||
+      brand.startsWith("heix") ||
+      brand.startsWith("hevc") ||
+      brand.startsWith("mif1") ||
+      brand.startsWith("heim") ||
+      brand.startsWith("heis")
+    ) {
+      return "image/heic";
+    }
+  }
+  return null;
+}
+
+function decodePhoto(input: string): DecodedImage {
+  const trimmed = input.trim();
+  const dataUrlMatch = trimmed.match(
+    /^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,(.+)$/i,
+  );
+
+  let base64 = trimmed;
+  if (dataUrlMatch) {
+    base64 = dataUrlMatch[3];
+  }
+
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64.replace(/\s+/g, ""))) {
+    throw new Error("照片內容不是有效的 Base64 字串。");
+  }
+
+  const buffer = Buffer.from(base64, "base64");
+  if (buffer.length === 0) {
+    throw new Error("照片內容為空。");
+  }
+
+  const sniffedMime = detectMimeFromMagicBytes(buffer);
+  if (!sniffedMime) {
+    throw new Error(
+      "無法辨識的影像格式，請改用 JPG、PNG、WEBP 或 HEIC 圖片。",
+    );
+  }
+
+  const ext = sniffedMime.split("/")[1] ?? "png";
+  return { buffer, mimeType: sniffedMime, filename: `user-photo.${ext}` };
+}
+
+function buildPrompt(texts: string[], theme: string | null | undefined): string {
+  const themeLine = theme && theme.trim().length > 0
+    ? `Overall styling theme keyword (apply to costumes, props, accessories, and background accents while keeping each sticker still about the same person): ${theme.trim()}.`
+    : "No specific theme — keep outfits simple and cute.";
+
+  const labelLines = texts
+    .map((label, idx) => {
+      const row = Math.floor(idx / 4) + 1;
+      const col = (idx % 4) + 1;
+      return `  - Row ${row}, Col ${col}: "${label}"`;
+    })
+    .join("\n");
+
+  return `Create a single portrait image (1024x1536 pixels) that is a 4-column by 6-row grid (24 cells total) of chibi-style 3D collectible-figure stickers based on the person in the reference photo. The art style is Pop Mart / Nano Banana Pro 3D vinyl-toy chibi: oversized adorable head, tiny rounded body, smooth glossy 3D rendering, soft studio lighting.
+
+Strict layout rules:
+- The full image is divided evenly into 4 columns and 6 rows. Each cell is the same size.
+- Each cell contains ONE chibi sticker of the same character (clearly recognizable as the person in the reference photo: same hairstyle, same skin tone, same general face shape and key features), in a different pose, expression, costume detail, or prop.
+- Every sticker is outlined with a thick, clean WHITE die-cut border (about 14-18px effective thickness) all the way around the character silhouette, like a real LINE / Pop Mart sticker.
+- The background of the entire sheet is a flat 50% medium gray (#808080), uniform across all cells. No grid lines drawn between cells.
+- Inside each cell, place the corresponding Chinese text label clearly readable, in a bold rounded sans-serif Chinese font, in a contrasting color (typically white with a subtle dark outline, or black with a white outline) so it pops against both the gray background and the sticker. Position the label so it does not cover the character's face — usually under, beside, or curving above the character.
+
+${themeLine}
+
+The 24 cell labels in row-major order (left to right, top to bottom) are:
+${labelLines}
+
+Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). Do not translate, romanize, abbreviate, or substitute the text. Do not add extra text, logos, watermarks, signatures, page numbers, or borders. The output must be a single flat image of the full sheet only.`;
+}
+
+router.post("/stickers/generate", async (req, res) => {
+  const parsed = GenerateStickerSheetBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: `請求格式錯誤：${parsed.error.issues
+        .map((i) => `${i.path.join(".")} ${i.message}`)
+        .join("; ")}`,
+    });
+    return;
+  }
+
+  const { photoBase64, theme, texts } = parsed.data;
+
+  let decoded: DecodedImage;
+  try {
+    decoded = decodePhoto(photoBase64);
+  } catch (err) {
+    res.status(400).json({
+      error: `照片解析失敗：${err instanceof Error ? err.message : String(err)}`,
+    });
+    return;
+  }
+
+  const prompt = buildPrompt(texts, theme ?? null);
+
+  try {
+    const sheetBuffer = await editImagesFromBuffers(
+      [
+        {
+          buffer: decoded.buffer,
+          filename: decoded.filename,
+          mimeType: decoded.mimeType,
+        },
+      ],
+      prompt,
+      "1024x1536",
+    );
+
+    const payload = GenerateStickerSheetResponse.parse({
+      imageBase64: sheetBuffer.toString("base64"),
+      mimeType: "image/png",
+    });
+    res.json(payload);
+  } catch (err) {
+    logger.error({ err }, "Sticker generation failed");
+    const message =
+      err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
+    res.status(500).json({ error: `貼圖生成失敗：${message}` });
+  }
+});
+
+export default router;

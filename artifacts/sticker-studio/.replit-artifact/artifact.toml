@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "3D Q版貼圖生成器"
+version = "1.0.0"
+id = "artifacts/sticker-studio"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23937
+
+[services.development]
+run = "pnpm --filter @workspace/sticker-studio run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sticker-studio", "run", "build" ]
+publicDir = "artifacts/sticker-studio/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23937"
+BASE_PATH = "/"

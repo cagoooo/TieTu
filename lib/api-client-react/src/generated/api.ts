@@ -5,18 +5,26 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ErrorResponse,
+  HealthStatus,
+  StickerSheet,
+  StickerSheetRequest,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +107,93 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Takes a user-uploaded portrait photo (base64) plus an optional theme
+keyword and 24 sticker text labels, then returns a single 4x6 grid
+sticker sheet (24 chibi-style stickers) as a base64 PNG.
+
+ * @summary Generate a 4x6 chibi sticker sheet from a user photo
+ */
+export const getGenerateStickerSheetUrl = () => {
+  return `/api/stickers/generate`;
+};
+
+export const generateStickerSheet = async (
+  stickerSheetRequest: StickerSheetRequest,
+  options?: RequestInit,
+): Promise<StickerSheet> => {
+  return customFetch<StickerSheet>(getGenerateStickerSheetUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(stickerSheetRequest),
+  });
+};
+
+export const getGenerateStickerSheetMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateStickerSheet>>,
+    TError,
+    { data: BodyType<StickerSheetRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateStickerSheet>>,
+  TError,
+  { data: BodyType<StickerSheetRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateStickerSheet"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateStickerSheet>>,
+    { data: BodyType<StickerSheetRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateStickerSheet(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateStickerSheetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateStickerSheet>>
+>;
+export type GenerateStickerSheetMutationBody = BodyType<StickerSheetRequest>;
+export type GenerateStickerSheetMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate a 4x6 chibi sticker sheet from a user photo
+ */
+export const useGenerateStickerSheet = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateStickerSheet>>,
+    TError,
+    { data: BodyType<StickerSheetRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateStickerSheet>>,
+  TError,
+  { data: BodyType<StickerSheetRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateStickerSheetMutationOptions(options));
+};

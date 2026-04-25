@@ -14,3 +14,43 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Takes a user-uploaded portrait photo (base64) plus an optional theme
+keyword and 24 sticker text labels, then returns a single 4x6 grid
+sticker sheet (24 chibi-style stickers) as a base64 PNG.
+
+ * @summary Generate a 4x6 chibi sticker sheet from a user photo
+ */
+export const generateStickerSheetBodyTextsMin = 24;
+export const generateStickerSheetBodyTextsMax = 24;
+
+export const GenerateStickerSheetBody = zod.object({
+  photoBase64: zod
+    .string()
+    .describe(
+      'Base64-encoded user photo. May be a raw base64 string or a full\ndata URL (e.g. \"data:image\/png;base64,...\").\n',
+    ),
+  theme: zod
+    .string()
+    .nullish()
+    .describe(
+      "Optional theme\/style keyword in Traditional Chinese (e.g. 馬年、太空人、黏土風).",
+    ),
+  texts: zod
+    .array(zod.string())
+    .min(generateStickerSheetBodyTextsMin)
+    .max(generateStickerSheetBodyTextsMax)
+    .describe(
+      "Exactly 24 Chinese sticker text labels in row-major order (4 columns × 6 rows).",
+    ),
+});
+
+export const GenerateStickerSheetResponse = zod.object({
+  imageBase64: zod
+    .string()
+    .describe(
+      "Base64-encoded PNG of the full 4x6 sticker sheet (no data URL prefix).",
+    ),
+  mimeType: zod.string().describe("MIME type of the returned image."),
+});

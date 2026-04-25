@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: stickers
+    description: Sticker generation operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /stickers/generate:
+    post:
+      operationId: generateStickerSheet
+      tags: [stickers]
+      summary: Generate a 4x6 chibi sticker sheet from a user photo
+      description: |
+        Takes a user-uploaded portrait photo (base64) plus an optional theme
+        keyword and 24 sticker text labels, then returns a single 4x6 grid
+        sticker sheet (24 chibi-style stickers) as a base64 PNG.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StickerSheetRequest"
+      responses:
+        "200":
+          description: Generated sticker sheet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StickerSheet"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server or upstream image error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +69,43 @@ components:
           type: string
       required:
         - status
-
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    StickerSheetRequest:
+      type: object
+      properties:
+        photoBase64:
+          type: string
+          description: |
+            Base64-encoded user photo. May be a raw base64 string or a full
+            data URL (e.g. "data:image/png;base64,...").
+        theme:
+          type: ["string", "null"]
+          description: Optional theme/style keyword in Traditional Chinese (e.g. 馬年、太空人、黏土風).
+        texts:
+          type: array
+          minItems: 24
+          maxItems: 24
+          items:
+            type: string
+          description: Exactly 24 Chinese sticker text labels in row-major order (4 columns × 6 rows).
+      required:
+        - photoBase64
+        - texts
+    StickerSheet:
+      type: object
+      properties:
+        imageBase64:
+          type: string
+          description: Base64-encoded PNG of the full 4x6 sticker sheet (no data URL prefix).
+        mimeType:
+          type: string
+          description: MIME type of the returned image.
+      required:
+        - imageBase64
+        - mimeType

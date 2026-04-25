@@ -8,3 +8,32 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export interface StickerSheetRequest {
+  /** Base64-encoded user photo. May be a raw base64 string or a full
+data URL (e.g. "data:image/png;base64,...").
+ */
+  photoBase64: string;
+  /**
+   * Optional theme/style keyword in Traditional Chinese (e.g. 馬年、太空人、黏土風).
+   * @nullable
+   */
+  theme?: string | null;
+  /**
+   * Exactly 24 Chinese sticker text labels in row-major order (4 columns × 6 rows).
+   * @minItems 24
+   * @maxItems 24
+   */
+  texts: string[];
+}
+
+export interface StickerSheet {
+  /** Base64-encoded PNG of the full 4x6 sticker sheet (no data URL prefix). */
+  imageBase64: string;
+  /** MIME type of the returned image. */
+  mimeType: string;
+}
