@@ -131,11 +131,22 @@ function buildPrompt(texts: string[], theme: string | null | undefined): string 
   return `Create a single portrait image (1024x1536 pixels) that is a 4-column by 6-row grid (24 cells total) of chibi-style 3D collectible-figure stickers based on the person in the reference photo. The art style is Pop Mart / Nano Banana Pro 3D vinyl-toy chibi: oversized adorable head, tiny rounded body, smooth glossy 3D rendering, soft studio lighting.
 
 Strict layout rules:
-- The full image is divided evenly into 4 columns and 6 rows. Each cell is the same size.
+- The full image is divided evenly into 4 columns and 6 rows. Each cell is the same size (256x256 pixels).
 - Each cell contains ONE chibi sticker of the same character (clearly recognizable as the person in the reference photo: same hairstyle, same skin tone, same general face shape and key features), in a different pose, expression, costume detail, or prop.
 - Every sticker is outlined with a thick, clean WHITE die-cut border (about 14-18px effective thickness) all the way around the character silhouette, like a real LINE / Pop Mart sticker.
 - The background of the entire sheet is a flat 50% medium gray (#808080), uniform across all cells. No grid lines drawn between cells.
-- Inside each cell, place the corresponding Chinese text label clearly readable, in a bold rounded sans-serif Chinese font, in a contrasting color (typically white with a subtle dark outline, or black with a white outline) so it pops against both the gray background and the sticker. Position the label so it does not cover the character's face — usually under, beside, or curving above the character.
+
+CRITICAL safe-zone rules for every cell (apply to ALL 24 cells, including the top row, bottom row, and the leftmost/rightmost columns — there are NO exceptions):
+- Treat each cell as having an inner safe area with at least 12 pixels of empty gray padding on every side (top, bottom, left, right). Nothing important — neither the character nor the text — may extend into this outer padding.
+- The Chinese text label and the character together must BOTH fit completely inside this safe area. Reserve a dedicated text band roughly 50-60 pixels tall inside the cell for the label, and shrink the character if needed so the text band stays fully visible.
+- The text label MUST be drawn entirely inside its own cell. It must NEVER touch, cross, or be clipped by the cell boundary, the sheet edge, the neighboring cell, or the character's face.
+- Position the label inside the cell using one canonical horizontal text band per row (the band is centered horizontally, full cell width minus the 12px side padding):
+  * Top row (Row 1): label band sits at the BOTTOM of the cell (well above the cell's bottom edge by at least 12px).
+  * Bottom row (Row 6): label band sits at the TOP of the cell (well below the cell's top edge by at least 12px). Do NOT place the label under the character — it will be cut off by the bottom edge of the sheet.
+  * Middle rows (Rows 2-5): label band sits at the BOTTOM of the cell, same as Row 1.
+  In every case the character occupies the remaining part of the cell and is sized so it does NOT overlap the label band.
+- Render the label in a bold rounded sans-serif Traditional Chinese font, in a contrasting color (typically white with a subtle dark outline, or black with a white outline) so it pops against both the gray background and the sticker. Pick a font size that makes the label easily readable while ensuring every character fits inside the band with full margins. If a label is long, you may either shrink the font size further or wrap it onto two lines inside the band — but never let any character be clipped, squished, or pushed outside the band.
+- Before finalizing the image, mentally verify that for every one of the 24 cells you can see the COMPLETE label with full top, bottom, left, and right margins inside that cell. If any label is touching an edge, move it inward and shrink the character to make room.
 
 ${themeLine}
 
