@@ -21,6 +21,7 @@ import {
   listHistory,
   type HistoryEntry,
 } from "@/lib/sticker-history";
+import { useAuth } from "@/hooks/use-auth";
 
 interface StickerHistoryProps {
   onOpen: (entry: HistoryEntry) => void;
@@ -35,11 +36,13 @@ function formatTimestamp(ts: number): string {
 
 export function StickerHistory({ onOpen, emptyHint }: StickerHistoryProps) {
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
+  const { user } = useAuth();
+  const uid = user?.uid ?? null;
 
   const refresh = useCallback(async () => {
-    const items = await listHistory();
+    const items = await listHistory(uid);
     setEntries(items);
-  }, []);
+  }, [uid]);
 
   useEffect(() => {
     refresh();
@@ -103,7 +106,7 @@ export function StickerHistory({ onOpen, emptyHint }: StickerHistoryProps) {
               <AlertDialogFooter>
                 <AlertDialogCancel>取消</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => clearHistory()}
+                  onClick={() => clearHistory(uid)}
                   data-testid="button-confirm-clear-history"
                 >
                   確定清除
@@ -164,7 +167,7 @@ export function StickerHistory({ onOpen, emptyHint }: StickerHistoryProps) {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      deleteHistoryEntry(entry.id);
+                      deleteHistoryEntry(entry.id, uid);
                     }}
                     className="w-7 h-7 rounded-full bg-white/90 text-destructive flex items-center justify-center shadow hover:bg-white"
                     aria-label="刪除此紀錄"

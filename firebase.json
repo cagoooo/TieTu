@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "target": "tietu",
     "public": "artifacts/sticker-studio/dist/public",

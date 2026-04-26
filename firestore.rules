@@ -1,0 +1,54 @@
+rules_version = '2';
+
+// Firestore security rules — shared with the Zhuyin app in the same
+// Firebase project. TieTu only owns the `users/{uid}/tietu_history/*`
+// path; everything else default-denies so Zhuyin can layer its own
+// allow blocks above the catch-all without affecting us.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------
+    // TieTu — sticker generation history per user (Phase 2B).
+    // Path is namespaced (`tietu_history`) so other apps can use the
+    // same {uid} document with their own subcollections without colliding.
+    // -----------------------------------------------------------------
+    match /users/{uid}/tietu_history/{entryId} {
+      // Read & delete: only the owner.
+      allow read, delete: if request.auth != null
+                          && request.auth.uid == uid;
+
+      // Create & update: owner + payload shape validation.
+      // Caps below match the SPA's HistoryEntry schema and are sized
+      // to keep documents under Firestore's 1 MiB per-doc ceiling.
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly([
+             'createdAt', 'theme', 'texts',
+             'styleId', 'imageUrl', 'thumbnailDataUrl'
+           ])
+        && request.resource.data.createdAt is number
+        && request.resource.data.texts is list
+        && request.resource.data.texts.size() == 24
+        && (request.resource.data.theme == null
+            || (request.resource.data.theme is string
+                && request.resource.data.theme.size() <= 80))
+        && (!('styleId' in request.resource.data)
+            || (request.resource.data.styleId is string
+                && request.resource.data.styleId.size() <= 32))
+        && (!('imageUrl' in request.resource.data)
+            || (request.resource.data.imageUrl is string
+                && request.resource.data.imageUrl.size() <= 1024))
+        && request.resource.data.thumbnailDataUrl is string
+        && request.resource.data.thumbnailDataUrl.size() <= 350000;
+    }
+
+    // -----------------------------------------------------------------
+    // Default deny — Zhuyin (or any other app sharing this Firebase
+    // project) is expected to add its own `match` blocks ABOVE this
+    // line in their own PR. Never broaden this rule to allow:if true.
+    // -----------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

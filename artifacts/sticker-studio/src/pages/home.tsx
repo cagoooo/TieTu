@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
 import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-storage";
 import type { StickerStyleId } from "@/lib/sticker-utils";
+import { useAuth } from "@/hooks/use-auth";
 
 // Code-split the entire result-screen subtree (sticker-result + cropper +
 // lightbox + tile editor + line export dialog). Upload-only users never
@@ -55,6 +56,8 @@ const TOTAL_ESTIMATE_SEC = STAGES.reduce((s, st) => s + st.sec, 0); // 70s
 const PROGRESS_CEILING = 95; // the last 5% comes from the actual response
 
 export default function Home() {
+  const { user } = useAuth();
+  const uid = user?.uid ?? null;
   const [appState, setAppState] = useState<AppState>("upload");
   const [sheetBase64, setSheetBase64] = useState<string | null>(null);
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
@@ -134,12 +137,15 @@ export default function Home() {
           // (P2-2). The auto-generated zod schema doesn't yet know about
           // it — read defensively via cast.
           const imageUrl = (data as { imageUrl?: string }).imageUrl;
-          addHistoryEntry({
-            theme,
-            texts,
-            sheetBase64: data.imageBase64,
-            imageUrl,
-          }).catch((err) =>
+          addHistoryEntry(
+            {
+              theme,
+              texts,
+              sheetBase64: data.imageBase64,
+              imageUrl,
+            },
+            uid,
+          ).catch((err) =>
             console.error("[home] Failed to add history", err),
           );
         },

@@ -1,5 +1,10 @@
 import { loadImage, toImageDataUrl } from "./sticker-utils";
 
+// Firestore + the entire firebase/firestore SDK is dynamic-imported so
+// signed-out users (the majority) never download the ~240 KB Firestore
+// chunk. Only triggers when uid is non-null.
+const loadFirestoreHistoryModule = () => import("./sticker-history-firestore");
+
 const DB_NAME = "sticker-studio";
 const DB_VERSION = 1;
 const STORE_NAME = "history";
@@ -193,7 +198,21 @@ export async function compressSheetForStorage(
   }
 }
 
-export async function listHistory(): Promise<HistoryEntry[]> {
+export async function listHistory(uid?: string | null): Promise<HistoryEntry[]> {
+  // Phase 2B: signed-in users get their history from Firestore (cross-device).
+  // Anonymous users keep using IndexedDB.
+  if (uid) {
+    try {
+      const { listFirestoreHistory } = await loadFirestoreHistoryModule();
+      return await listFirestoreHistory(uid);
+    } catch (error) {
+      console.warn(
+        "[sticker-history] Firestore listHistory failed; falling back to IndexedDB",
+        error,
+      );
+      // Fall through to IDB so the user still sees something.
+    }
+  }
   if (!isIndexedDbAvailable()) return [];
   try {
     const entries = await withStore("readonly", (store) => {
@@ -246,7 +265,39 @@ export async function addHistoryEntry(
   input: Omit<HistoryEntry, "id" | "createdAt" | "thumbnailDataUrl"> & {
     thumbnailDataUrl?: string;
   },
+  uid?: string | null,
 ): Promise<AddHistoryResult> {
+  // Phase 2B: signed-in users get their history into Firestore so it
+  // syncs across devices. The thumbnail still has to be generated client
+  // side; Firestore stores both the URL and the small JPEG thumb.
+  if (uid) {
+    try {
+      const useRemote =
+        typeof input.imageUrl === "string" && input.imageUrl.length > 0;
+      const thumbnailDataUrl =
+        input.thumbnailDataUrl ??
+        (await makeThumbnail(
+          useRemote
+            ? input.sheetBase64
+            : await compressSheetForStorage(input.sheetBase64),
+        ));
+      const { addFirestoreHistory } = await loadFirestoreHistoryModule();
+      const entry = await addFirestoreHistory(uid, {
+        theme: input.theme,
+        texts: input.texts,
+        thumbnailDataUrl,
+        imageUrl: input.imageUrl,
+      });
+      notifyChange();
+      return { status: "saved", entry, evictedCount: 0 };
+    } catch (error) {
+      console.warn(
+        "[sticker-history] Firestore addHistoryEntry failed; falling back to IndexedDB",
+        error,
+      );
+      // Fall through to the IDB path so we still capture the entry locally.
+    }
+  }
   if (!isIndexedDbAvailable()) {
     return { status: "unsupported", entry: null, evictedCount: 0 };
   }
@@ -365,7 +416,20 @@ async function trimHistory(): Promise<number> {
   return excess.length;
 }
 
-export async function deleteHistoryEntry(id: string): Promise<void> {
+export async function deleteHistoryEntry(id: string, uid?: string | null): Promise<void> {
+  if (uid) {
+    try {
+      const { deleteFirestoreHistory } = await loadFirestoreHistoryModule();
+      await deleteFirestoreHistory(uid, id);
+      notifyChange();
+      return;
+    } catch (error) {
+      console.warn(
+        "[sticker-history] Firestore deleteHistoryEntry failed; falling back to IndexedDB",
+        error,
+      );
+    }
+  }
   if (!isIndexedDbAvailable()) return;
   try {
     await withStore("readwrite", (store) => {
@@ -381,7 +445,20 @@ export async function deleteHistoryEntry(id: string): Promise<void> {
   }
 }
 
-export async function clearHistory(): Promise<void> {
+export async function clearHistory(uid?: string | null): Promise<void> {
+  if (uid) {
+    try {
+      const { clearFirestoreHistory } = await loadFirestoreHistoryModule();
+      await clearFirestoreHistory(uid);
+      notifyChange();
+      return;
+    } catch (error) {
+      console.warn(
+        "[sticker-history] Firestore clearHistory failed; falling back to IndexedDB",
+        error,
+      );
+    }
+  }
   if (!isIndexedDbAvailable()) return;
   try {
     await withStore("readwrite", (store) => {

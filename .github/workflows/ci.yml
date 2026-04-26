@@ -6,6 +6,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Opt every JavaScript-based GitHub Action (checkout, setup-node, pnpm,
+# google-github-actions/*, etc.) into Node.js 24 so the deprecation warnings
+# go away ahead of the September 2026 hard cutoff.
+# (Node 22 is still what we use for our own build commands; the Cloud Functions
+#  runtime caps at 22 anyway. This flag only affects the runtime hosting the
+#  action plugins themselves.)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
