@@ -7,6 +7,39 @@ export const DEFAULT_TEXTS = [
   "出去玩", "哈哈哈", "白眼", "Hi", "麻煩了", "拜託", "辛苦了", "感謝你"
 ];
 
+// ---------------------------------------------------------------------------
+// 5 種視覺風格選項。後端 buildPrompt 用 id 來組對應的 art-style 段落,前端
+// 只需要 id / label / emoji / 一句話描述用來渲染選擇器。
+// 預設 pop-mart-3d 是原本系統的風格(向後相容)。
+// ---------------------------------------------------------------------------
+export type StickerStyleId =
+  | "pop-mart-3d"
+  | "clay"
+  | "pixel"
+  | "anime-2d"
+  | "watercolor";
+
+export interface StickerStyleOption {
+  id: StickerStyleId;
+  label: string;
+  emoji: string;
+  description: string;
+}
+
+export const STICKER_STYLES: StickerStyleOption[] = [
+  { id: "pop-mart-3d", label: "3D 公仔", emoji: "🎁", description: "Pop Mart 立體 vinyl 玩具質感" },
+  { id: "clay",        label: "黏土風", emoji: "🪀", description: "claymation 手捏軟黏土" },
+  { id: "pixel",       label: "像素風", emoji: "👾", description: "8/16-bit 復古遊戲精靈" },
+  { id: "anime-2d",    label: "2D 動畫", emoji: "✨", description: "日系動漫線稿 + 平塗" },
+  { id: "watercolor",  label: "水彩風", emoji: "🎨", description: "手繪繪本水彩暈染" },
+];
+
+export const DEFAULT_STICKER_STYLE: StickerStyleId = "pop-mart-3d";
+
+export function isValidStickerStyle(value: string): value is StickerStyleId {
+  return STICKER_STYLES.some((s) => s.id === value);
+}
+
 export function getThemeTexts(theme: string): string[] {
   if (!theme || theme.trim() === "") return [...DEFAULT_TEXTS];
   return DEFAULT_TEXTS.map((t, i) => {

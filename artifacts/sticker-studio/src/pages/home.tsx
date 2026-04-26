@@ -8,6 +8,7 @@ import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
 import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-storage";
+import type { StickerStyleId } from "@/lib/sticker-utils";
 
 type AppState = "upload" | "loading" | "result";
 
@@ -37,17 +38,22 @@ export default function Home() {
     theme: string | null,
     texts: string[],
     turnstileToken: string | null,
+    style: StickerStyleId,
   ) => {
     setAppState("loading");
     setCurrentTexts(texts);
-    
+
     // Cycle hints
     const hintInterval = setInterval(() => {
       setLoadingHints(prev => (prev + 1) % hints.length);
     }, 5000);
 
+    // `style` is not in the auto-generated zod schema (we deliberately
+    // skipped re-running orval codegen for this small additive change).
+    // The api-server reads it directly off req.body, so we cast through
+    // unknown to satisfy TS.
     generateMutation.mutate(
-      { data: { photoBase64, theme, texts, turnstileToken } },
+      { data: { photoBase64, theme, texts, turnstileToken, style } as unknown as Parameters<typeof generateMutation.mutate>[0]["data"] },
       {
         onSuccess: (data) => {
           clearInterval(hintInterval);

@@ -97,7 +97,49 @@ function decodePhoto(input: string): DecodedImage {
   return { buffer, mimeType: sniffedMime, filename: `user-photo.${ext}` };
 }
 
-function buildPrompt(texts: string[], theme: string | null | undefined): string {
+// Art-style descriptions used by buildPrompt(). Each id matches one entry in
+// the SPA's STICKER_STYLES array (artifacts/sticker-studio/src/lib/sticker-utils.ts).
+// Keep these in sync — the SPA sends a `style` string from the radio group,
+// the server looks it up here and inlines the description into the prompt.
+type StyleId = "pop-mart-3d" | "clay" | "pixel" | "anime-2d" | "watercolor";
+
+const STYLE_DESCRIPTIONS: Record<StyleId, { headline: string; details: string }> = {
+  "pop-mart-3d": {
+    headline: "Pop Mart / Nano Banana Pro 3D vinyl-toy chibi",
+    details:
+      "oversized adorable head, tiny rounded body, smooth glossy 3D rendering, soft studio lighting, gentle subsurface scattering, polished collectible-figure feel.",
+  },
+  clay: {
+    headline: "handmade plasticine claymation chibi",
+    details:
+      "pinched-and-squashed clay forms, visible thumbprints and tool marks, matte (non-glossy) surface, slightly imperfect symmetry, warm uneven lighting reminiscent of stop-motion animation.",
+  },
+  pixel: {
+    headline: "16-bit pixel-art chibi",
+    details:
+      "chunky retro game-sprite shapes, hard pixel edges with NO anti-aliasing, limited 8-color palette per cell, simple dithering for shading, evocative of classic JRPG character portraits — but the WHITE die-cut sticker outline below should still be smooth (not pixelated) so it reads as a sticker frame.",
+  },
+  "anime-2d": {
+    headline: "2D anime / manga line-art chibi",
+    details:
+      "bold black ink outlines, flat cel-shaded coloring with one shadow tier and one highlight tier, expressive oversized eyes, clean vector-like silhouettes — explicitly NOT 3D, NOT photorealistic.",
+  },
+  watercolor: {
+    headline: "soft watercolor wash chibi illustration",
+    details:
+      "visible brush strokes, gentle color bleeding at edges, paper-grain texture beneath the paint, pastel palette, hand-painted storybook feel — warm but slightly imperfect.",
+  },
+};
+
+function isStyleId(value: unknown): value is StyleId {
+  return typeof value === "string" && value in STYLE_DESCRIPTIONS;
+}
+
+function buildPrompt(
+  texts: string[],
+  theme: string | null | undefined,
+  style: StyleId = "pop-mart-3d",
+): string {
   const themeLine = theme && theme.trim().length > 0
     ? `Overall styling theme keyword (apply to costumes, props, accessories, and background accents while keeping each sticker still about the same person): ${theme.trim()}.`
     : "No specific theme — keep outfits simple and cute.";
@@ -110,7 +152,9 @@ function buildPrompt(texts: string[], theme: string | null | undefined): string 
     })
     .join("\n");
 
-  return `Create a single portrait image (1024x1536 pixels) that is a 4-column by 6-row grid (24 cells total) of chibi-style 3D collectible-figure stickers based on the person in the reference photo. The art style is Pop Mart / Nano Banana Pro 3D vinyl-toy chibi: oversized adorable head, tiny rounded body, smooth glossy 3D rendering, soft studio lighting.
+  const styleSpec = STYLE_DESCRIPTIONS[style];
+
+  return `Create a single portrait image (1024x1536 pixels) that is a 4-column by 6-row grid (24 cells total) of chibi-style stickers based on the person in the reference photo. The art style is ${styleSpec.headline}: ${styleSpec.details}
 
 Strict layout rules:
 - The full image is divided evenly into 4 columns and 6 rows. Each cell is the same size (256x256 pixels).
@@ -153,6 +197,12 @@ router.post(
     }
 
     const { photoBase64, theme, texts } = parsed.data;
+    // `style` is intentionally outside the auto-generated zod schema so we
+    // can ship it without re-running orval codegen. Defaults to pop-mart-3d
+    // (the original system style) when absent or invalid.
+    const styleId: StyleId = isStyleId((req.body as { style?: unknown }).style)
+      ? ((req.body as { style: StyleId }).style)
+      : "pop-mart-3d";
 
     let decoded: DecodedImage;
     try {
@@ -164,7 +214,7 @@ router.post(
       return;
     }
 
-    const prompt = buildPrompt(texts, theme ?? null);
+    const prompt = buildPrompt(texts, theme ?? null, styleId);
 
     try {
       const sheetBuffer = await generateStickerSheet({

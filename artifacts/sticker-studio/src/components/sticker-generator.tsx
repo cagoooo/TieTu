@@ -10,7 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { DEFAULT_TEXTS, fileToBase64 } from "@/lib/sticker-utils";
+import {
+  DEFAULT_TEXTS,
+  fileToBase64,
+  STICKER_STYLES,
+  DEFAULT_STICKER_STYLE,
+  type StickerStyleId,
+} from "@/lib/sticker-utils";
 import { customFetch, ApiError } from "@workspace/api-client-react";
 import { TurnstileWidget, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
 
@@ -19,6 +25,13 @@ const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | 
 const formSchema = z.object({
   theme: z.string().optional(),
   texts: z.array(z.string()).length(24, "必須剛好 24 個標籤"),
+  style: z.enum([
+    "pop-mart-3d",
+    "clay",
+    "pixel",
+    "anime-2d",
+    "watercolor",
+  ]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -29,6 +42,7 @@ interface StickerGeneratorProps {
     theme: string | null,
     texts: string[],
     turnstileToken: string | null,
+    style: StickerStyleId,
   ) => void;
   isPending: boolean;
 }
@@ -64,11 +78,13 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
     defaultValues: {
       theme: "",
       texts: [...DEFAULT_TEXTS],
+      style: DEFAULT_STICKER_STYLE,
     },
   });
 
   const texts = form.watch("texts");
   const theme = form.watch("theme");
+  const style = form.watch("style");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -199,6 +215,7 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
         values.theme || null,
         values.texts,
         captchaEnabled ? turnstileToken : null,
+        values.style,
       );
     } catch (error) {
       toast({
@@ -288,12 +305,51 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                 <Label className="text-lg font-bold block">2. 設定主題 (選填)</Label>
                 <div className="flex gap-2">
                   <Input
-                    placeholder="例如：馬年、太空人、黏土風..."
+                    placeholder="例如：馬年、太空人、社畜日常..."
                     value={theme}
                     onChange={(e) => form.setValue("theme", e.target.value)}
                     className="rounded-xl border-primary/20 focus-visible:ring-primary h-12 text-lg"
                   />
                 </div>
+              </div>
+
+              <div className="mt-8 space-y-3">
+                <Label className="text-lg font-bold block">3. 選擇風格</Label>
+                <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label="貼圖視覺風格">
+                  {STICKER_STYLES.map((opt) => {
+                    const active = style === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => form.setValue("style", opt.id)}
+                        title={opt.description}
+                        data-testid={`style-option-${opt.id}`}
+                        className={`flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition-all ${
+                          active
+                            ? "border-primary bg-primary/10 shadow-sm"
+                            : "border-border hover:border-primary/40 hover:bg-muted/40"
+                        }`}
+                      >
+                        <span className="text-2xl leading-none" aria-hidden="true">
+                          {opt.emoji}
+                        </span>
+                        <span
+                          className={`text-[11px] font-bold leading-tight text-center ${
+                            active ? "text-primary" : "text-foreground/80"
+                          }`}
+                        >
+                          {opt.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {STICKER_STYLES.find((s) => s.id === style)?.description ?? ""}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -303,7 +359,7 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
           <Card className="border-2 border-primary/20 shadow-xl rounded-3xl h-full flex flex-col">
             <CardContent className="p-6 flex-1 flex flex-col">
               <div className="flex items-center justify-between mb-6">
-                <Label className="text-lg font-bold block m-0">3. 自訂貼圖文字 (24張)</Label>
+                <Label className="text-lg font-bold block m-0">4. 自訂貼圖文字 (24張)</Label>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
