@@ -10,6 +10,7 @@ import {
 import { rewriteTexts } from "@workspace/integrations-gemini-server/text";
 import { logger } from "../lib/logger";
 import { tryUploadSheetPng } from "../lib/storage";
+import { attachFirebaseUser, getRequestUser } from "../lib/auth-middleware";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
 
 // Per-IP rate limiting was removed in deployment plan A: this is a private /
@@ -189,6 +190,7 @@ Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). D
 router.post(
   "/stickers/generate",
   verifyTurnstile(),
+  attachFirebaseUser(),
   async (req, res) => {
     const parsed = GenerateStickerSheetBody.safeParse(req.body);
     if (!parsed.success) {
@@ -221,6 +223,19 @@ router.post(
     const prompt = buildPrompt(texts, theme ?? null, styleId);
 
     try {
+      // Phase 2A: log uid when the SPA sent an authenticated request. Used
+      // for usage analytics and (in Phase 3) per-user quota enforcement.
+      const authedUser = getRequestUser(req);
+      logger.info(
+        {
+          uid: authedUser?.uid ?? null,
+          email: authedUser?.email ?? null,
+          theme: theme ?? null,
+          style: styleId,
+        },
+        "[stickers] generate request",
+      );
+
       const sheetBuffer = await generateStickerSheet({
         photoBuffer: decoded.buffer,
         photoMimeType: decoded.mimeType,
@@ -276,7 +291,7 @@ interface RewriteTextsRequest {
   originalTexts?: unknown;
 }
 
-router.post("/stickers/rewrite-texts", verifyTurnstile(), async (req, res) => {
+router.post("/stickers/rewrite-texts", verifyTurnstile(), attachFirebaseUser(), async (req, res) => {
   const body = (req.body ?? {}) as RewriteTextsRequest;
   const themeRaw = typeof body.theme === "string" ? body.theme.trim() : "";
   if (!themeRaw) {

@@ -1,8 +1,23 @@
 import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
-import { setBaseUrl } from "@workspace/api-client-react";
+import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
+import { getFirebaseAuth } from "./lib/firebase";
 import App from "./App";
 import "./index.css";
+
+// Auto-attach the Firebase ID token to every customFetch call. The api-server's
+// attachFirebaseUser middleware verifies the token and exposes req.user.uid.
+// Returns null when the user is anonymous so customFetch skips the header
+// entirely (the server treats those as guest requests).
+setAuthTokenGetter(async () => {
+  try {
+    const user = getFirebaseAuth().currentUser;
+    if (!user) return null;
+    return await user.getIdToken();
+  } catch {
+    return null;
+  }
+});
 
 // When the API lives at a different origin than the SPA (e.g. running the
 // API server locally on :8080 while previewing the built SPA elsewhere),
