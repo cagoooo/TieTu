@@ -879,80 +879,182 @@ jobs:
 
 排序原則:**先安全 → 再體驗 → 再成本/規模 → 最後是能力擴張**。
 
-### P0 — 安全與穩定(上線前必做)
-| 項 | 內容 | 出處 | 估時 |
+### 13.0 — 已完成成果(2026-04-26 部署 session)
+
+從 Replit 搬到 GitHub + Firebase 多應用環境的成果(共 11 個 commits 從 `78fe643` ~ `50c97de`):
+
+#### 部署與基礎建設(11 項)
+- ✅ Repo push 到 `github.com/cagoooo/TieTu`(public),v0.1.0 tag
+- ✅ Firebase 部署到既有 `zhuyin-challenge-v3-4cd2b` 專案,**multi-app safe**(codebase `tietu`、function `tietu_api`、hosting target `tietu` 全部 namespaced;Zhuyin Web App v3 與 Browser key 完全沒被誤動)
+- ✅ Cloud Functions v2 在 `asia-east1`,Node 22,1 GiB,maxInstances=10,timeout 540 s
+- ✅ Hosting site `tietu` + 同網域 `/api/**` rewrite 到 Function
+- ✅ GitHub Pages mirror `https://cagoooo.github.io/TieTu/`(SPA 兩處皆可用)
+- ✅ GCP Service Account `github-actions-tietu`,11 個 IAM roles,key piped 進 GitHub Secret(零暴露)
+- ✅ GitHub Actions 三條 workflow:`ci.yml` + `deploy.yml`(Firebase)+ `deploy-pages.yml`(GitHub Pages)— **push main 自動部署兩處**
+- ✅ Artifact Registry cleanup policy(5 day retention)防容器映像累積帳單
+- ✅ Secrets 全 `TIETU_*` 前綴(剩 2 個:`TIETU_GEMINI_API_KEY` 真實值 + `TIETU_TURNSTILE_SECRET_KEY` 暫為 `DISABLED` sentinel)
+- ✅ Cloud Billing API 啟用 + Blaze plan 綁定到 `01BE02-E9987A-49E884`(同 smes-e1dc3)
+- ✅ Cloud Function CORS allowlist:`tietu.web.app` + `tietu.firebaseapp.com` + `cagoooo.github.io`(跨網域時 GitHub Pages 也能呼叫 API)
+
+#### 程式碼遷移(6 項)
+- ✅ 移除 OpenAI(`gpt-image-1`)→ 改 **Google Gemini API**(`@google/genai` SDK + AI Studio key)
+- ✅ Default model 升級到 **`gemini-3.1-flash-image-preview`**(中文字體比 2.5-image 系列大幅進步;skill `gemini-api-integration` 的 ListModels 工作流確認)
+- ✅ 修 `thinkingConfig` bug(image-output 模型不接受該 config,只有 text 模型用)
+- ✅ Express CORS 從全開改成 env-driven allowlist;`trust proxy` 從 `true` 改成具體 hop count
+- ✅ Vite config:`BASE_PATH` / `PORT` 改成 sane default(避開 Windows Git Bash 的 MSYS path conversion 雷)
+- ✅ pnpm-workspace.yaml 放寬 Replit-only 平台 overrides;Cloud Functions wrapper 用 esbuild bundle workspace 套件成 2.9 MB 單檔(不再依賴 `workspace:*` protocol,雲端 npm 看不到)
+
+#### 砍掉的(3 項)
+- ✅ Postgres rate-limit middleware + `lib/db` 引用(plan A:私人/教學情境,改靠 maxInstances + Gemini quota + Turnstile 三層)
+- ✅ `lib/integrations-openai-ai-server` + `lib/integrations-openai-ai-react`
+- ✅ 4 個沒用到的 secrets(DATABASE_URL / RATE_LIMIT_PER_*)
+
+#### SPA 新功能(3 項)
+- ✅ **一鍵去背 toggle + 強度 slider**(切割預覽即時 checker 透明背景,24 張 ZIP 下載自動套用;LINE Export Dialog 仍有獨立 tolerance)
+- ✅ **「如何上架」LINE Creators Market 連結卡片**(result page 與 export dialog 兩處)
+- ✅ Default model 升級後 SPA 自動重 build + 跨兩處部署(`tietu.web.app` + `cagoooo.github.io/TieTu/`)
+
+#### 文件 / Memory(3 項)
+- ✅ 整合 USAGE / DEPLOYMENT / OPTIMIZATION 三份文件成單一 README(940 → 1100 行,取代 replit.md)
+- ✅ Memory feedback `feedback_github_firebase_backend.md` — 未來規劃 GitHub 後端時主推 Firebase
+- ✅ Memory feedback `feedback_windows_git_bash_msys_pathconv.md` — Windows + Git Bash + Vite `BASE_PATH=/` 的 MSYS path conversion 雷防範
+
+**現況**:`https://tietu.web.app/` + `https://cagoooo.github.io/TieTu/` 都活著,生成貼圖完整流程可跑,月成本 **$0**(GCP free tier 內,Gemini quota 有日限但超量也不收費)。
+
+---
+
+### 13.1 — P0 仍待補強(下次有時間立刻做的小動作)
+
+| 項 | 內容 | 為何重要 | 估時 |
 |---|---|---|---|
-| P0-1 | **CORS allowlist** | [api-server/src/app.ts:33](artifacts/api-server/src/app.ts:33) | 30 min |
-| P0-2 | **`trust proxy` 改具體 hop** | [api-server/src/app.ts:12](artifacts/api-server/src/app.ts:12) | 15 min |
-| P0-3 | **Gemini API quota + 部署前 ListModels** | Google AI Studio | 30 min |
-| P0-4 | **Secrets 全面 rotate**(從 Replit 搬出來時) | — | 30 min |
+| **P0-A** | **GCP Budget Alert** USD 10/mo + 50%/90%/100% email | 雖然 free tier 內,真有人惡意刷 Gemini image 還是會跳到付費,沒上限保護就裸奔 | 10 min |
+| **P0-B** | **Cloudflare Turnstile 真實啟用**(目前 `DISABLED` sentinel) | 沒 captcha 等於把 Gemini API key 額度開放給任何人 | 15 min |
+| **P0-C** | **Gemini API quota override**(GCP Console → IAM → Quotas) 設 daily 上限 | 比 Budget Alert 更直接 — 達上限直接 429,不會有「付費跳出 free tier」的灰色地帶 | 15 min |
+| **P0-D** | **GitHub Actions 升級 Node 24** + `actions/checkout@v5` 等(Node 20 在 2026-09 強制下線) | CI 不會死但會持續警告 | 20 min |
 
-### P1 — 體驗與品質(上線後 1 週內)
+> 💡 P0-A + P0-B + P0-C 我可以幫你**全自動跑完**(GCP CLI / Cloudflare API 都能搞)。Turnstile 那條需要你先去 Cloudflare 拿 site/secret key(< 3 分鐘)。
+
+---
+
+### 13.2 — P1 體驗與觀測(週級別)
+
+| 項 | 內容 | 為何 | 估時 |
+|---|---|---|---|
+| **P1-1** | Vite dev server 加 `/api` proxy 到 :8080 | 本機開發者一進門就踩 404 | 15 min |
+| **P1-2** | env 集中 zod 驗證(`api-server/src/env.ts`)+ 啟動時 fail-fast | 比現在散落各處 `if (!process.env.X) throw` 更乾淨 | 1 hr |
+| **P1-3** | Gemini 失敗訊息**分類成 5 類**(safety_block / quota_exhausted / model_not_found / max_tokens / internal),前端對應不同 toast 文案 | 使用者看「貼圖生成失敗」啥都不知道,分類後可給「請換張照片」「等等再試」「請聯絡管理員」具體指引 | 2 hr |
+| **P1-4** | 大檔案上傳改 `multipart/form-data`(目前 base64 進 50 MB JSON,吃 RAM) | 一張 10 MB 圖變 13.3 MB JSON;改 multipart 省 33% + 串流 | 3 hr |
+| **P1-5** | 加 `/api/readyz`(檢查 Gemini ListModels)區分 liveness/readiness | UptimeRobot 監控可分「服務活著但 Gemini 掛」與「整體掛」 | 30 min |
+| **P1-6** | 生成 loading 加 AbortController + 取消按鈕 | 30–90 秒乾等沒得反悔很折磨 | 1 hr |
+| **P1-7** | **Sentry / Logtail 接 5xx error**(目前只能去 GCP Logging 撈) | error 跳出來才會被發現,不用每天主動看 log | 1 hr |
+| **P1-8** | **Firebase Hosting Preview Channels** for PR(`firebase hosting:channel:deploy pr-N`) | PR 可在 `https://tietu--pr-N-xxxx.web.app/` 預覽,不污染 production | 1 hr |
+| **P1-9** | Bundle code-split:framer-motion / react-day-picker / recharts 拆 chunk | 目前 725 KB → 230 KB gzip,可拆到 < 150 KB initial | 2 hr |
+| **P1-10** | **整張 PNG 下載也支援去背**(目前去背只在 24 張 ZIP) | 某些情境(縮圖/分享)使用者想要透明 sheet | 1.5 hr |
+
+---
+
+### 13.3 — P2 規模化(MAU 破百後再考慮)
+
 | 項 | 內容 | 估時 |
 |---|---|---|
-| P1-1 | Vite dev server 加 `/api` proxy | 15 min |
-| P1-2 | env 集中驗證(用 zod 在啟動時) | 1 hr |
-| P1-3 | Gemini 失敗訊息**分類**(safety_block / quota / model_404 / internal),回前端 toast 對應 | 1 hr |
-| P1-4 | 大檔案上傳改 `multipart/form-data`(省 33% 流量,避免 50mb JSON 吃 RAM) | 3 hr |
-| P1-5 | 加 `/api/readyz`(檢查 DB)區分 liveness/readiness | 30 min |
-| P1-6 | Loading 中斷邏輯(`AbortController` + 取消按鈕) | 1 hr |
+| **P2-1** | **背景 job 化**(避免 Cloud Run 60 秒 timeout):新增 `sticker_jobs` Firestore collection + 兩段 API(`POST /api/jobs` 建任務 + `GET /api/jobs/:id` polling)+ 前端 SSE/polling | 1–2 day |
+| **P2-2** | **生成結果上傳 Firebase Storage** + signed URL,前端拿 URL 而非 base64;Storage 設 7 天 lifecycle 自動刪 | 0.5 day |
+| **P2-3** | **重新引入 rate-limit**(用 Firestore atomic counter 而非 Postgres);僅在 MAU 到一定門檻才需 | 0.5 day |
+| **P2-4** | **限流分層**:全域 quota + IP + Firebase Auth user(已登入用 user_id,未登入用 IP) | 0.5 day |
+| **P2-5** | **Cloud Functions Min Instances=1** 消除 cold start(會持續扣 GB-seconds 但體驗顯著) | 5 min(設定)+ 觀察 1 週成本 |
+| **P2-6** | Prometheus / OpenTelemetry metrics export 到 Grafana Cloud free | 0.5 day |
+| **P2-7** | **API key rotation 自動化**(90 天 cron + Cloud Scheduler trigger SA 跑 gcloud secrets:set) | 1 day |
 
-### P2 — 成本與規模(MAU 破千後)
+---
+
+### 13.4 — P3 能力擴張(產品化)
+
+| 項 | 內容 | 為何 | 估時 |
+|---|---|---|---|
+| **P3-1** | **Firebase Authentication 帳號系統**(Google + Apple OAuth)+ 把 IndexedDB 歷史改成 Firestore(可換瀏覽器/裝置看歷史) | IndexedDB 換瀏覽器就消失 | 1–2 wk |
+| **P3-2** | **Stripe 付費**(`stripe-replit-sync` 已預留;改 Stripe vanilla):Free 5 張/月 / Plus 100/月 / Pro 無限 | 免費版規模化不可持續 | 2 wk |
+| **P3-3** | **Prompt 風格選擇器**(pop-mart-3d / clay-figure / pixel-art / anime-2d / watercolor)+ DB-backed 模板 | 同樣 24 張可以有 5 種風格,UGC 增加 5x | 1 day |
+| **P3-4** | 多語系(i18n;zh-Hant / zh-Hans / en / ja),預設 24 個 `DEFAULT_TEXTS` 對應每語系一份 | 把 TAM 從台灣擴到 CJK 全區 | 3 day |
+| **P3-5** | 即時生成進度(SSE 推「上傳中→AI 思考中→生成中→切片中」),P2-1 完成後做 | 30–90 秒乾等留存率殺手 | 2 day |
+| **P3-6** | **OCR 自動重試**:tesseract.js 跑切片後比對 expected vs recognized,差異率 > 30% 自動重生(最多 2 次) | 對抗 Gemini 偶爾把字寫錯的弱點 | 3 day |
+| **P3-7** | LINE Bot 介面:LINE Messaging API,使用者直接在 LINE 上傳照片就能拿到貼圖 ZIP | 不用打開瀏覽器,使用門檻 0 | 1 wk |
+| **P3-8** | **生成歷史社群展示**(僅同意分享的使用者):像 Lensa / Replicate 的 trending 牆 | 增加曝光 + 風格參考 | 1 wk |
+| **P3-9** | **「直接送審 LINE」**(用 LINE Creators API 自動上傳 ZIP) | 目前是手動下載 → 上傳。一鍵送審是大幅降低門檻 | 2 wk(需 LINE 商業帳號) |
+| **P3-10** | **多人合照變多角色**(輸入一張多人照,輸出每人一組 24 張) | 單人擴到家庭 / 班級 | 1–2 wk |
+
+---
+
+### 13.5 — P4 工程效能(累積 3 個月後)
+
 | 項 | 內容 | 估時 |
 |---|---|---|
-| P2-1 | **背景 job 化**(避免 Cloud Run / LB 60 秒切斷):新表 `sticker_jobs` + 兩段 API + 前端 polling/SSE | 1–2 day |
-| P2-2 | **CDN 快取生成結果**:上傳到 Firebase Storage / R2,前端拿 URL 而非 base64 | 0.5 day |
-| P2-3 | Postgres pool 調校(`max`、`idleTimeoutMillis`) | 30 min |
-| P2-4 | **限流分層**:全域 + IP + session | 0.5 day |
-| P2-5 | Prometheus / OpenTelemetry metrics | 0.5 day |
+| **P4-1** | 補測試(vitest):`verify-turnstile`、`decodePhoto`(magic bytes 各格式)、`buildPrompt`(snapshot)、`splitImageWithGuides`、`buildLineStickerPackage`、`removeMatteFromEdges`(用 canvas-mock) | 1 wk |
+| **P4-2** | E2E test(Playwright):upload → mock Gemini fixture → 切片預覽 → 開去背 → 下載 ZIP → 開 ZIP 驗證 24 張透明 PNG | 1 day |
+| **P4-3** | 整理 monorepo:刪 `lib/integrations/openai_ai_integrations/` 殭屍 + `mockup-sandbox` 是否要正式定位或移除;加 turbo / nx 跑 cache-aware build | 1 day |
+| **P4-4** | 抽 prompt 到設定檔(`lib/sticker-prompts/templates/{style}.txt`)+ 後台改 prompt 不需重 deploy | 0.5 day |
+| **P4-5** | **functions/lib npm install cache**(GitHub Actions 每次 deploy 都跑 install,可加 cache 省 10–20 秒) | 30 min |
+| **P4-6** | **替換 firebase-tools npx 為 pinned version**(目前用 `npx --yes firebase-tools@15`,每次 download 慢) | 30 min |
+| **P4-7** | 文件持續維護(README、TypeDoc、貢獻指南、ADRs) | 持續 |
 
-### P3 — 能力擴張(產品化)
-| 項 | 內容 | 估時 |
-|---|---|---|
-| P3-1 | **使用者帳號**(Firebase Authentication 最 native):Google + Apple OAuth | 1–2 wk |
-| P3-2 | **付費方案**(Stripe;workspace 已預留 `stripe-replit-sync`):Free/Plus/Pro | 2 wk |
-| P3-3 | Prompt 風格選擇器(pop-mart-3d / clay / pixel / anime / watercolor) | 1 day |
-| P3-4 | 多語系(i18n;zh-TW / zh-CN / en / ja) | 3 day |
-| P3-5 | 即時生成進度(SSE 推「上傳中→AI 思考中→生成中→切片中」) | 2 day |
-| P3-6 | OCR 自動重試:tesseract.js 比對輸出文字,差異率 > 30% 重生 | 3 day |
-| P3-7 | LINE Bot / Telegram Bot 介面 | 1 wk |
+---
 
-### P4 — 工程效能(累積 3 個月後)
-| 項 | 內容 | 估時 |
-|---|---|---|
-| P4-1 | 補測試(vitest;rate-limit、verify-turnstile、decodePhoto、buildPrompt、splitImageWithGuides、buildLineStickerPackage) | 1 wk |
-| P4-2 | E2E test(Playwright;upload → mock Gemini → 切片 → 下載 ZIP) | 1 day |
-| P4-3 | 整理 monorepo(刪 `lib/integrations/openai_ai_integrations/` 殭屍資料夾,加 turbo cache) | 1 day |
-| P4-4 | 抽 prompt 到設定檔(`lib/sticker-prompts/templates/{style}.txt`) | 0.5 day |
-| P4-5 | 文件持續維護(README、TypeDoc、貢獻指南) | 持續 |
+### 13.6 — 短/中/長期建議路線
 
-### 1 週上線優化計畫(最務實)
+#### 🎯 下個 session(2 小時內可結束 — 安全加固)
 ```
-Day 1(2 hr):P0-1 ~ P0-4 全做
-Day 2(3 hr):P1-1、P1-2、P1-3
-Day 3:Firebase 部署(§12)+ Turnstile + 自訂網域
-Day 4–5:觀察 Gemini usage、pino log 錯誤 pattern,調 RATE_LIMIT_PER_DAY
-Day 6–7:P1-5 readyz、UptimeRobot、Slack/LINE 告警
+20 min:P0-A GCP Budget Alert(我可以全自動跑)
+15 min:P0-B Cloudflare Turnstile(你拿 keys + 我自動部署)
+15 min:P0-C Gemini API quota override
+20 min:P0-D GitHub Actions 升 Node 24
+30 min:P1-1 Vite dev proxy + P1-5 /api/readyz
+20 min:P1-7 Sentry 接上(SaaS,5 分鐘設定)
+```
+全做完從 0 → 防呆完整,**Budget + quota + captcha + monitoring 四層保險**。
+
+#### 📅 下個月(週末做 1 個 — 體驗精進)
+```
+Week 1:P1-3 錯誤分類 + P1-6 取消按鈕 → 體感最直接
+Week 2:P1-9 bundle 拆 chunk + P1-10 整張去背
+Week 3:P3-3 風格選擇器(5 種風格)→ 內容大幅豐富
+Week 4:P3-4 多語系 → 把 TAM 從台灣擴到 CJK
 ```
 
-### 3 個月規模化路線
+#### 🚀 下季(產品化)
 ```
-Week 1–2:P2-1 background jobs
-Week 3:    P2-2 Firebase Storage 結果儲存 + CDN
-Week 4:    P2-4 全域 + session 限流
-Week 5–6:  P3-1 帳號(Firebase Auth)
-Week 7–8:  P3-2 Stripe 付費 + 額度
-Week 9:    P3-3 風格選擇器
-Week 10:   P4-1 測試
-Week 11–12:P3-5 進度 + P3-6 OCR 自動重試
+Month 1:P3-1 Firebase Auth + Firestore 歷史
+Month 2:P3-2 Stripe 付費 + 額度管理
+Month 3:P3-5 即時進度 + P3-6 OCR 自動重試
 ```
 
-### Top 5 我會親手做(只有時間做 5 件事的話)
-1. **P0-1 + P0-2 + P0-3**(安全三連)
-2. **P1-3** 錯誤分類(體感最明顯)
-3. **P2-1** 背景 job(規模一上來必經之痛)
-4. **P3-2** Stripe 付費(免費版不可持續)
-5. **P4-1** 測試(改 prompt / 升 Gemini 模型版本時不怕 — 模型棄用速度快)
+#### 🌱 長期(平台化)
+```
+Q3 後:P3-7 LINE Bot
+Q4 後:P3-8 社群展示 + P3-9 直送 LINE 審核
+Q+:    P3-10 多人合照
+```
+
+---
+
+### 13.7 — Top 5「我會親手做」(只有時間做 5 件事)
+
+1. **P0-A + P0-B + P0-C**(預算 / Captcha / Quota 三連)— 沒做等於把信用卡留在桌上
+2. **P1-3** 錯誤分類 — 體感最直接,使用者馬上覺得「這 app 有用心」
+3. **P3-3** Prompt 風格選擇器 — 1 天工作換 5 倍內容多樣性,CP 值最高
+4. **P3-2** Stripe 付費 — 沒收入的免費版規模化不可持續,愈早做愈不痛
+5. **P4-1** 測試 — 改 prompt / 升 Gemini 模型版本時不怕(Gemini 棄用速度快,3.1-flash-image-preview 哪天改名你還想跑得動)
+
+---
+
+### 13.8 — 預算與成本上限預估
+
+| 階段 | MAU | 月成本 | 備註 |
+|---|---|---|---|
+| **目前** | < 100(自用 / 朋友) | **$0** | 全在 free tier;Gemini 偶爾用 paid 可能 < $1 |
+| 中規模 | 100–1,000 | $0–10 | Cloud Functions 可能跑超 free invocations;Gemini paid 快速累積 |
+| 大規模 | 1,000–10,000 | $20–100 | 需要 P2-1 background jobs + P2-2 storage + P3-2 收費才不虧本 |
+| 平台級 | > 10,000 | 看商業模式 | Cloudflare Cache 前置 + multi-region + 自架 GPU 推論可大幅降本 |
+
+監控帳單:GCP Console → Billing → Reports,每月初檢視 + 帳單 alert。
 
 ---
 
