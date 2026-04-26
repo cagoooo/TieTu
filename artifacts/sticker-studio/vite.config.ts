@@ -55,6 +55,44 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Raise the 500 KB warning ceiling — the merged vendor chunk (radix +
+    // framer-motion) sits around 200 KB on its own and we'd rather log
+    // sizes than chase the warning into noise.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Split heavy npm vendors into named chunks so the browser can fetch
+        // them in parallel under HTTP/2 and only re-download the ones whose
+        // versions actually change. Buckets are picked by frequency-of-use
+        // and "ships together" cohesion (e.g. all Radix primitives change
+        // in lockstep so they share one chunk).
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("react-dom") || /[\\/]react[\\/]/.test(id) || id.includes("scheduler")) {
+            return "vendor-react";
+          }
+          if (id.includes("framer-motion")) return "vendor-motion";
+          if (id.includes("@radix-ui")) return "vendor-radix";
+          if (id.includes("@tanstack")) return "vendor-query";
+          if (
+            id.includes("react-hook-form") ||
+            id.includes("@hookform") ||
+            id.includes("/zod/")
+          ) {
+            return "vendor-forms";
+          }
+          if (id.includes("jszip") || id.includes("file-saver")) return "vendor-io";
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("react-day-picker") || id.includes("date-fns")) return "vendor-datepicker";
+          if (id.includes("embla-carousel")) return "vendor-carousel";
+          if (id.includes("recharts") || id.includes("/d3-")) return "vendor-charts";
+          if (id.includes("cmdk") || id.includes("sonner") || id.includes("vaul") || id.includes("input-otp")) {
+            return "vendor-ui-extra";
+          }
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,
