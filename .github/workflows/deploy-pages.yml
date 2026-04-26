@@ -1,0 +1,78 @@
+name: Deploy SPA to GitHub Pages (mirror)
+
+# Mirrors the SPA at https://cagoooo.github.io/TieTu/ as a second public
+# entry point. Backend API still lives on Firebase Cloud Functions
+# (https://tietu.web.app/api/...) and is reached via VITE_API_BASE_URL.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'artifacts/sticker-studio/**'
+      - 'lib/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent Pages deployment, with the latest push winning.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build SPA for GitHub Pages
+        env:
+          PORT: 23937
+          # GitHub Pages serves at /<repo>/, so Vite's base must reflect that.
+          BASE_PATH: /TieTu/
+          # The SPA on Pages is cross-origin from the API (Cloud Function on
+          # tietu.web.app), so set an absolute API base. setBaseUrl in main.tsx
+          # picks this up at runtime.
+          VITE_API_BASE_URL: https://tietu.web.app
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
+        run: pnpm --filter @workspace/sticker-studio run build
+
+      - name: SPA fallback (404.html → index.html)
+        # GitHub Pages doesn't natively rewrite SPA routes; copying index.html
+        # to 404.html lets Wouter's <Route component={NotFound}> handle deep
+        # links like /TieTu/anything correctly on first hit.
+        run: cp artifacts/sticker-studio/dist/public/index.html artifacts/sticker-studio/dist/public/404.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/sticker-studio/dist/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

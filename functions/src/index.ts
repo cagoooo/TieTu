@@ -45,11 +45,15 @@ async function getApp(): Promise<RequestHandler> {
     }
     // Cloud Run sits behind two proxy hops (Google Frontend + Cloud Run sidecar).
     process.env.TRUST_PROXY = process.env.TRUST_PROXY ?? "2";
-    // CORS allowlist is intentionally left unset: the SPA and this function
-    // share an origin via Firebase Hosting rewrites (see firebase.json), so
-    // requests are same-origin and never trigger CORS.
-    // If you split SPA / API across origins, set CORS_ALLOWED_ORIGINS via env
-    // (or another defineSecret) before this dynamic import runs.
+    // CORS allowlist:
+    //   - https://tietu.web.app           — Firebase Hosting (same-origin via
+    //                                         rewrites; included for safety)
+    //   - https://tietu.firebaseapp.com   — alternate Firebase Hosting URL
+    //   - https://cagoooo.github.io       — GitHub Pages mirror at /TieTu/
+    // If you wire up a custom domain or fork the repo, append yours here.
+    process.env.CORS_ALLOWED_ORIGINS =
+      process.env.CORS_ALLOWED_ORIGINS ??
+      "https://tietu.web.app,https://tietu.firebaseapp.com,https://cagoooo.github.io";
 
     const mod = (await import("@workspace/api-server/app")) as {
       default: RequestHandler;
