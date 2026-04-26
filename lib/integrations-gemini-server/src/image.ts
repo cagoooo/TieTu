@@ -15,22 +15,27 @@ export interface GenerateStickerInput {
  * Default model for sticker sheet generation. Override at runtime via the
  * `GEMINI_IMAGE_MODEL` environment variable.
  *
- * Verified 2026-04-26 against ListModels — `gemini-2.5-flash-image` is the GA
- * name (the earlier `-preview` suffix has been retired). Newer alternatives
- * available the same day:
- *   - gemini-3.1-flash-image-preview  (newer but preview, may break)
- *   - gemini-3-pro-image-preview      (slower / pricier, preview)
+ * 2026-04-26 model selection notes (verified via ListModels):
+ *   - gemini-2.5-flash-image          (GA, fast, weak at Traditional Chinese
+ *                                      character rendering — produces
+ *                                      visually-similar but wrong glyphs)
+ *   - gemini-3.1-flash-image-preview  ← chosen default: dramatically better
+ *                                      at zh-Hant text rendering, still fast,
+ *                                      preview status accepted as trade-off
+ *   - gemini-3-pro-image-preview      (slowest / priciest, peak quality;
+ *                                      switch to this if 3.1-flash starts
+ *                                      mis-rendering on harder layouts)
  *
- * ⚠️ Google deprecates Gemini models faster than other providers. BEFORE
- *    deploying, verify the model is still active by running:
+ * ⚠️ Google retires Gemini models faster than other providers. Before
+ *    deploying a new revision, verify the model is still active:
  *
  *      curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" \
  *        | grep -oE '"name":\s*"models/gemini-[^"]*image[^"]*"'
  *
- *    If `gemini-2.5-flash-image` disappears, set `GEMINI_IMAGE_MODEL` to a
- *    listed replacement.
+ *    If the default disappears, set `GEMINI_IMAGE_MODEL` env to a listed
+ *    replacement and redeploy (no code change needed).
  */
-const DEFAULT_MODEL = "gemini-2.5-flash-image";
+const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 
 function modelName(): string {
   return process.env["GEMINI_IMAGE_MODEL"]?.trim() || DEFAULT_MODEL;
