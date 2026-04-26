@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Heart } from "lucide-react";
+import { Sparkles, Heart, Upload, Brain, Wand2, Check } from "lucide-react";
 import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
 import { StickerResult } from "@/components/sticker-result";
 import { StickerHistory } from "@/components/sticker-history";
@@ -12,11 +12,26 @@ import type { StickerStyleId } from "@/lib/sticker-utils";
 
 type AppState = "upload" | "loading" | "result";
 
+// Synthetic generation stages for the loading screen. Gemini doesn't expose
+// real-time progress, so we time these against the typical 30–90s wallclock
+// observed in production and let the progress bar climb to 95% asymptotically
+// (the last 5% lands when the response actually arrives).
+const STAGES = [
+  { id: "uploading",  label: "上傳照片中",   icon: Upload,   sec: 2 },
+  { id: "thinking",   label: "AI 分析五官",  icon: Brain,    sec: 8 },
+  { id: "generating", label: "生成 24 張貼圖", icon: Sparkles, sec: 50 },
+  { id: "polishing",  label: "最後潤飾",     icon: Wand2,    sec: 10 },
+] as const;
+const TOTAL_ESTIMATE_SEC = STAGES.reduce((s, st) => s + st.sec, 0); // 70s
+const PROGRESS_CEILING = 95; // the last 5% comes from the actual response
+
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("upload");
   const [sheetBase64, setSheetBase64] = useState<string | null>(null);
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
   const [loadingHints, setLoadingHints] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const loadingStartRef = useRef<number | null>(null);
 
   const { toast } = useToast();
   const generateMutation = useGenerateStickerSheet();
@@ -32,6 +47,23 @@ export default function Home() {
     "快好了快好了，打個蝴蝶結...",
     "最後的魔法點綴 ✨..."
   ];
+
+  // Tick a 100ms timer while loading so the progress bar / stage indicator
+  // can do their thing. Stops automatically when appState leaves "loading".
+  useEffect(() => {
+    if (appState !== "loading") {
+      loadingStartRef.current = null;
+      setElapsedSec(0);
+      return;
+    }
+    loadingStartRef.current = Date.now();
+    setElapsedSec(0);
+    const id = window.setInterval(() => {
+      if (loadingStartRef.current === null) return;
+      setElapsedSec((Date.now() - loadingStartRef.current) / 1000);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [appState]);
 
   const handleGenerate = (
     photoBase64: string,
@@ -251,42 +283,147 @@ export default function Home() {
               </motion.div>
             )}
 
-            {appState === "loading" && (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.1 }}
-                transition={{ duration: 0.4 }}
-                className="w-full flex flex-col items-center justify-center py-20"
-              >
-                <div className="relative w-32 h-32 mb-8">
-                  <div className="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
-                  <div className="absolute inset-2 border-4 border-primary/40 rounded-full animate-spin" style={{ animationDuration: '2s' }} />
-                  <div className="absolute inset-4 bg-primary rounded-full flex items-center justify-center shadow-lg animate-pulse">
-                    <Sparkles className="w-10 h-10 text-white" />
-                  </div>
-                </div>
-                
-                <h2 className="text-3xl font-bold mb-4 text-foreground">魔法施展中...</h2>
-                
-                <AnimatePresence mode="wait">
-                  <motion.p
-                    key={loadingHints}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="text-lg text-muted-foreground flex items-center gap-2"
-                  >
-                    {hints[loadingHints]}
-                  </motion.p>
-                </AnimatePresence>
+            {appState === "loading" && (() => {
+              // Compute the active stage based on cumulative seconds. Anything
+              // past the planned total parks at the last stage so the UI keeps
+              // making sense when generation runs long.
+              let cumulative = 0;
+              let activeIndex = STAGES.length - 1;
+              for (let i = 0; i < STAGES.length; i++) {
+                cumulative += STAGES[i].sec;
+                if (elapsedSec < cumulative) {
+                  activeIndex = i;
+                  break;
+                }
+              }
+              const ratio = Math.min(1, elapsedSec / TOTAL_ESTIMATE_SEC);
+              // Logarithmic-ish curve so the bar moves fast early and slow
+              // late — feels honest when overruns happen.
+              const progressPct = Math.min(
+                PROGRESS_CEILING,
+                Math.round(PROGRESS_CEILING * (1 - Math.pow(1 - ratio, 1.4))),
+              );
+              const ActiveIcon = STAGES[activeIndex].icon;
 
-                <p className="mt-8 text-sm text-muted-foreground/60 max-w-sm text-center">
-                  這大約需要 30 到 90 秒，可以先去泡杯茶或伸個懶腰。
-                </p>
-              </motion.div>
-            )}
+              return (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.1 }}
+                  transition={{ duration: 0.4 }}
+                  className="w-full flex flex-col items-center justify-center py-12 md:py-16"
+                >
+                  <div className="relative w-32 h-32 mb-6">
+                    <div className="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
+                    <div className="absolute inset-2 border-4 border-primary/40 rounded-full animate-spin" style={{ animationDuration: '2s' }} />
+                    <div className="absolute inset-4 bg-primary rounded-full flex items-center justify-center shadow-lg animate-pulse">
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={STAGES[activeIndex].id}
+                          initial={{ scale: 0.6, opacity: 0, rotate: -20 }}
+                          animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                          exit={{ scale: 0.6, opacity: 0, rotate: 20 }}
+                          transition={{ duration: 0.25 }}
+                        >
+                          <ActiveIcon className="w-10 h-10 text-white" />
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    <motion.h2
+                      key={STAGES[activeIndex].id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="text-2xl md:text-3xl font-bold mb-1 text-foreground text-center"
+                      data-testid="loading-stage-label"
+                    >
+                      {STAGES[activeIndex].label}
+                    </motion.h2>
+                  </AnimatePresence>
+                  <p className="text-xs text-muted-foreground mb-6 tabular-nums">
+                    階段 {activeIndex + 1} / {STAGES.length} · 已過 {Math.floor(elapsedSec)} 秒
+                  </p>
+
+                  {/* Progress bar */}
+                  <div
+                    className="w-full max-w-md h-3 rounded-full bg-muted overflow-hidden mb-3 shadow-inner"
+                    role="progressbar"
+                    aria-valuenow={progressPct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="生成進度"
+                  >
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-primary/80 via-primary to-primary"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progressPct}%` }}
+                      transition={{ duration: 0.4, ease: "easeOut" }}
+                      data-testid="loading-progress-bar"
+                    />
+                  </div>
+                  <p className="text-xs font-bold tabular-nums text-primary mb-6" data-testid="loading-progress-value">
+                    {progressPct}%
+                  </p>
+
+                  {/* Stage indicators */}
+                  <div className="flex items-center gap-1 sm:gap-2 mb-6 flex-wrap justify-center max-w-md">
+                    {STAGES.map((stage, idx) => {
+                      const StageIcon = stage.icon;
+                      const isDone = idx < activeIndex;
+                      const isActive = idx === activeIndex;
+                      return (
+                        <div key={stage.id} className="flex items-center gap-1 sm:gap-2">
+                          <div
+                            className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                              isDone
+                                ? "bg-primary text-primary-foreground"
+                                : isActive
+                                ? "bg-primary/15 text-primary ring-2 ring-primary"
+                                : "bg-muted text-muted-foreground/50"
+                            }`}
+                            title={stage.label}
+                          >
+                            {isDone ? (
+                              <Check className="w-4 h-4" />
+                            ) : (
+                              <StageIcon className="w-4 h-4" />
+                            )}
+                          </div>
+                          {idx < STAGES.length - 1 && (
+                            <div
+                              className={`h-0.5 w-4 sm:w-8 rounded-full transition-colors ${
+                                isDone ? "bg-primary" : "bg-muted"
+                              }`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={loadingHints}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="text-sm text-muted-foreground/80 italic"
+                    >
+                      {hints[loadingHints]}
+                    </motion.p>
+                  </AnimatePresence>
+
+                  <p className="mt-6 text-xs text-muted-foreground/60 max-w-sm text-center">
+                    通常 30–90 秒,可以先去泡杯茶或伸個懶腰 ☕
+                  </p>
+                </motion.div>
+              );
+            })()}
 
             {appState === "result" && sheetBase64 && (
               <motion.div
