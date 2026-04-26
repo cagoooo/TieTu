@@ -1,5 +1,4 @@
 import { Router, type IRouter } from "express";
-import { z } from "zod/v4";
 import {
   GenerateStickerSheetBody,
   GenerateStickerSheetResponse,
@@ -192,33 +191,43 @@ router.post(
 // POST /api/stickers/rewrite-texts
 // Asks Gemini text model to rewrite all 24 labels so they're cohesively tied
 // to a user-supplied theme. Used by the SPA's "依主題改寫" button on the
-// upload page.
+// upload page. Hand-rolled validation (no zod dep in api-server).
 // ---------------------------------------------------------------------------
 
-const RewriteTextsBody = z.object({
-  theme: z.string().min(1, "主題不可為空").max(50, "主題請限制 50 字內").trim(),
-  originalTexts: z.array(z.string()).length(24, "originalTexts 必須剛好 24 個元素"),
-});
+interface RewriteTextsRequest {
+  theme?: unknown;
+  originalTexts?: unknown;
+}
 
 router.post("/stickers/rewrite-texts", verifyTurnstile(), async (req, res) => {
-  const parsed = RewriteTextsBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({
-      error: `請求格式錯誤：${parsed.error.issues
-        .map((i) => `${i.path.join(".")} ${i.message}`)
-        .join("; ")}`,
-    });
+  const body = (req.body ?? {}) as RewriteTextsRequest;
+  const themeRaw = typeof body.theme === "string" ? body.theme.trim() : "";
+  if (!themeRaw) {
+    res.status(400).json({ error: "請求格式錯誤：主題不可為空。" });
+    return;
+  }
+  if (themeRaw.length > 50) {
+    res.status(400).json({ error: "請求格式錯誤：主題請限制在 50 字內。" });
     return;
   }
 
+  const originalRaw = Array.isArray(body.originalTexts) ? body.originalTexts : null;
+  if (!originalRaw || originalRaw.length !== 24) {
+    res.status(400).json({
+      error: "請求格式錯誤：originalTexts 必須剛好 24 個元素。",
+    });
+    return;
+  }
+  const originalTexts: string[] = originalRaw.map((v) => (typeof v === "string" ? v : String(v ?? "")));
+
   try {
     const texts = await rewriteTexts({
-      theme: parsed.data.theme,
-      originalTexts: parsed.data.originalTexts,
+      theme: themeRaw,
+      originalTexts,
     });
     res.json({ texts });
   } catch (err) {
-    logger.error({ err, theme: parsed.data.theme }, "Theme rewrite failed");
+    logger.error({ err, theme: themeRaw }, "Theme rewrite failed");
     const message =
       err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
     res.status(500).json({ error: `主題改寫失敗：${message}` });
