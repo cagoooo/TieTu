@@ -90,9 +90,6 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
-      '@workspace/db':
-        specifier: workspace:*
-        version: link:../../lib/db
       '@workspace/integrations-gemini-server':
         specifier: workspace:*
         version: link:../../lib/integrations-gemini-server
@@ -102,9 +99,6 @@ importers:
       cors:
         specifier: ^2
         version: 2.8.6
-      drizzle-orm:
-        specifier: 'catalog:'
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.18.0)(pg@8.20.0)
       express:
         specifier: ^5
         version: 5.2.1
@@ -542,9 +536,6 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../lib/api-zod
-      '@workspace/db':
-        specifier: workspace:*
-        version: link:../lib/db
       '@workspace/integrations-gemini-server':
         specifier: workspace:*
         version: link:../lib/integrations-gemini-server

@@ -9,11 +9,12 @@ import { logger } from "firebase-functions/v2";
 //   firebase functions:secrets:set TIETU_DATABASE_URL --project=zhuyin-challenge-v3-4cd2b
 // ---------------------------------------------------------------------------
 
-const TIETU_DATABASE_URL = defineSecret("TIETU_DATABASE_URL");
+// Plan A deployment: rate-limit middleware was removed, so we no longer
+// need TIETU_DATABASE_URL or the per-IP rate limit knobs. Capacity protection
+// now lives at the Cloud Functions concurrency layer (maxInstances) plus
+// Gemini's own quota.
 const TIETU_GEMINI_API_KEY = defineSecret("TIETU_GEMINI_API_KEY");
 const TIETU_TURNSTILE_SECRET_KEY = defineSecret("TIETU_TURNSTILE_SECRET_KEY");
-const TIETU_RATE_LIMIT_PER_MINUTE = defineSecret("TIETU_RATE_LIMIT_PER_MINUTE");
-const TIETU_RATE_LIMIT_PER_DAY = defineSecret("TIETU_RATE_LIMIT_PER_DAY");
 
 // firebase-functions ships @types/express-serve-static-core@4 while api-server
 // uses Express 5 (whose Request/Response types differ). They are compatible at
@@ -29,14 +30,9 @@ async function getApp(): Promise<RequestHandler> {
   if (_appPromise) return _appPromise;
   _appPromise = (async () => {
     // Map TIETU_-prefixed secrets to the env names the existing Express app
-    // expects. The api-server reads process.env at module-import time inside
-    // lib/db (DATABASE_URL), integrations-gemini-server (GEMINI_API_KEY), and
-    // verify-turnstile (TURNSTILE_SECRET_KEY), so we must populate them BEFORE
-    // dynamically importing the app.
-    process.env.DATABASE_URL = TIETU_DATABASE_URL.value();
+    // expects. integrations-gemini-server reads GEMINI_API_KEY at module-import
+    // time, so we must populate it BEFORE dynamically importing the app.
     process.env.GEMINI_API_KEY = TIETU_GEMINI_API_KEY.value();
-    process.env.STICKER_RATE_LIMIT_PER_MINUTE = TIETU_RATE_LIMIT_PER_MINUTE.value();
-    process.env.STICKER_RATE_LIMIT_PER_DAY = TIETU_RATE_LIMIT_PER_DAY.value();
 
     // Turnstile sentinel: "DISABLED" means we deliberately want captcha off
     // (typical for bring-up while waiting on the Cloudflare keys). Leaving
@@ -77,13 +73,7 @@ export const tietu_api = onRequest(
     concurrency: 80,
     cpu: 1,
     invoker: "public",
-    secrets: [
-      TIETU_DATABASE_URL,
-      TIETU_GEMINI_API_KEY,
-      TIETU_TURNSTILE_SECRET_KEY,
-      TIETU_RATE_LIMIT_PER_MINUTE,
-      TIETU_RATE_LIMIT_PER_DAY,
-    ],
+    secrets: [TIETU_GEMINI_API_KEY, TIETU_TURNSTILE_SECRET_KEY],
   },
   async (req, res) => {
     try {

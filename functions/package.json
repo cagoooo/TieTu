@@ -20,7 +20,6 @@
   "devDependencies": {
     "@workspace/api-server": "workspace:*",
     "@workspace/api-zod": "workspace:*",
-    "@workspace/db": "workspace:*",
     "@workspace/integrations-gemini-server": "workspace:*",
     "@types/node": "catalog:",
     "esbuild": "^0.27.3",

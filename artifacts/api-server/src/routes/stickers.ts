@@ -5,39 +5,20 @@ import {
 } from "@workspace/api-zod";
 import { generateStickerSheet } from "@workspace/integrations-gemini-server/image";
 import { logger } from "../lib/logger";
-import { rateLimit } from "../middlewares/rate-limit";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
 
+// Per-IP rate limiting was removed in deployment plan A: this is a private /
+// classroom-shared instance, so the protection layers we rely on are:
+//   - Cloud Functions maxInstances: 10 (firebase.json wrapper)
+//   - Cloudflare Turnstile (when TURNSTILE_SECRET_KEY is set)
+//   - Gemini API daily quota (Google's own throttling; over-limit returns 429
+//     to the client and is *not* billed)
+//
+// If you later open this up to the public, restore the Postgres-backed
+// rateLimit middleware from git history (file: middlewares/rate-limit.ts)
+// and provision Neon / Firestore for the rate_limit_events table.
+
 const router: IRouter = Router();
-
-function readPositiveInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    logger.warn(
-      { env: name, value: raw },
-      `Invalid ${name}, falling back to ${fallback}`,
-    );
-    return fallback;
-  }
-  return parsed;
-}
-
-const STICKER_RATE_LIMIT_PER_MINUTE = readPositiveInt(
-  "STICKER_RATE_LIMIT_PER_MINUTE",
-  3,
-);
-const STICKER_RATE_LIMIT_PER_DAY = readPositiveInt(
-  "STICKER_RATE_LIMIT_PER_DAY",
-  30,
-);
-
-const stickerRateLimiter = rateLimit({
-  bucket: "sticker:generate",
-  perMinute: STICKER_RATE_LIMIT_PER_MINUTE,
-  perDay: STICKER_RATE_LIMIT_PER_DAY,
-});
 
 interface DecodedImage {
   buffer: Buffer;
@@ -159,7 +140,6 @@ Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). D
 router.post(
   "/stickers/generate",
   verifyTurnstile(),
-  stickerRateLimiter,
   async (req, res) => {
     const parsed = GenerateStickerSheetBody.safeParse(req.body);
     if (!parsed.success) {
