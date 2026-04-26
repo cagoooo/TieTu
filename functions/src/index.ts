@@ -1,6 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
+import * as Sentry from "@sentry/node";
 
 // ---------------------------------------------------------------------------
 // Secrets — all use the TIETU_ prefix to coexist safely with any other
@@ -15,6 +16,35 @@ import { logger } from "firebase-functions/v2";
 // Gemini's own quota.
 const TIETU_GEMINI_API_KEY = defineSecret("TIETU_GEMINI_API_KEY");
 const TIETU_TURNSTILE_SECRET_KEY = defineSecret("TIETU_TURNSTILE_SECRET_KEY");
+// Sentry DSN — left as a "DISABLED" sentinel during bring-up. When you want
+// real error tracking, run:
+//   firebase functions:secrets:set TIETU_SENTRY_DSN --project=zhuyin-challenge-v3-4cd2b
+// and paste the DSN from sentry.io. Code below treats absence / "DISABLED"
+// the same: no init, zero overhead, no captures.
+const TIETU_SENTRY_DSN = defineSecret("TIETU_SENTRY_DSN");
+
+let _sentryInited = false;
+function ensureSentry(): void {
+  if (_sentryInited) return;
+  _sentryInited = true; // set true even on skip so we don't keep re-evaluating
+
+  const dsn = TIETU_SENTRY_DSN.value();
+  if (!dsn || dsn === "DISABLED") return;
+  try {
+    Sentry.init({
+      dsn,
+      tracesSampleRate: 0.1,
+      environment: process.env.NODE_ENV ?? "production",
+      release: process.env.K_REVISION ?? "tietu_api@unknown",
+      // Cloud Functions reuses instances across requests but cold-starts
+      // create new ones; Sentry's default global flush behaviour is fine
+      // for short-lived HTTP handlers like ours.
+    });
+    logger.info("[sentry] initialised");
+  } catch (err) {
+    logger.error("[sentry] init failed; continuing without Sentry", err);
+  }
+}
 
 // firebase-functions ships @types/express-serve-static-core@4 while api-server
 // uses Express 5 (whose Request/Response types differ). They are compatible at
@@ -77,14 +107,24 @@ export const tietu_api = onRequest(
     concurrency: 80,
     cpu: 1,
     invoker: "public",
-    secrets: [TIETU_GEMINI_API_KEY, TIETU_TURNSTILE_SECRET_KEY],
+    secrets: [TIETU_GEMINI_API_KEY, TIETU_TURNSTILE_SECRET_KEY, TIETU_SENTRY_DSN],
   },
   async (req, res) => {
+    ensureSentry();
     try {
       const app = await getApp();
       app(req, res);
     } catch (err) {
       logger.error("[tietu_api] Function entry error", err);
+      // Best-effort: report to Sentry if it's been initialised. captureException
+      // is a no-op when Sentry is not configured, so it's always safe to call.
+      try {
+        Sentry.captureException(err, {
+          tags: { layer: "function-entry", route: req.path },
+        });
+      } catch {
+        /* never let Sentry kill the response */
+      }
       if (!res.headersSent) {
         res.status(500).json({ error: "Internal server error" });
       }

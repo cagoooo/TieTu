@@ -17,10 +17,12 @@
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^6.0.1"
   },
+  "//esbuild-bundled": "@sentry/node lives in devDependencies because it gets inlined into lib/index.js by functions/build.mjs (not externalised), so the deploy-only package.json doesn't need to list it.",
   "devDependencies": {
     "@workspace/api-server": "workspace:*",
     "@workspace/api-zod": "workspace:*",
     "@workspace/integrations-gemini-server": "workspace:*",
+    "@sentry/node": "^8.50.0",
     "@types/node": "catalog:",
     "esbuild": "^0.27.3",
     "typescript": "^5.9.2"
