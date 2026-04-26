@@ -12,7 +12,10 @@ import {
   Eraser,
   CheckCircle2,
   ExternalLink,
+  ScanText,
+  AlertTriangle,
 } from "lucide-react";
+import type { OcrVerificationResult } from "@/lib/sticker-ocr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -128,6 +131,13 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [matteEnabled, setMatteEnabled] = useState(false);
   const [matteTolerance, setMatteTolerance] = useState(DEFAULT_MATTE_TOLERANCE);
   const effectiveMatte = matteEnabled ? matteTolerance : 0;
+
+  // 文字準確度檢查(opt-in):tesseract.js + chi_tra language pack 是 lazy
+  // chunk(~8 MB),只在使用者主動點按鈕時才下載。詳見 lib/sticker-ocr.ts。
+  const [ocrState, setOcrState] = useState<"idle" | "loading" | "done">("idle");
+  const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [ocrResult, setOcrResult] = useState<OcrVerificationResult | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
   const debounceRef = useRef<number | null>(null);
   const splitVersionRef = useRef(0);
@@ -288,6 +298,57 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
       console.error("Zip failed", error);
     } finally {
       setIsZipping(false);
+    }
+  };
+
+  const handleVerifyOcr = async () => {
+    if (tiles.length === 0) {
+      toast({
+        title: "尚未完成切片",
+        description: "請等切割預覽載入後再試。",
+        variant: "destructive",
+      });
+      return;
+    }
+    setOcrState("loading");
+    setOcrError(null);
+    setOcrResult(null);
+    setOcrProgress({ done: 0, total: 0 });
+    try {
+      // Dynamic import to keep tesseract.js out of the upload-stage bundle.
+      const { verifyTilesOcr } = await import("@/lib/sticker-ocr");
+      const result = await verifyTilesOcr(tiles, texts, {
+        sampleSize: Math.min(tiles.length, 12),
+        similarityThreshold: 0.5,
+        onProgress: (done, total) => setOcrProgress({ done, total }),
+      });
+      setOcrResult(result);
+      setOcrState("done");
+      const matchPct = Math.round(result.averageSimilarity * 100);
+      if (result.mismatches.length === 0) {
+        toast({
+          title: "文字辨識準確 ✅",
+          description: `抽樣 ${result.totalChecked} 張,平均相似度 ${matchPct}%。可放心下載。`,
+        });
+      } else {
+        toast({
+          title: `偵測到 ${result.mismatches.length} 處可能錯字`,
+          description: `平均相似度 ${matchPct}%。請查看下方清單,可手動修文字後重新生成。`,
+          variant: "destructive",
+          duration: 8000,
+        });
+      }
+    } catch (error) {
+      console.error("OCR verification failed", error);
+      const message =
+        error instanceof Error ? error.message : "OCR 模型載入或執行失敗。";
+      setOcrError(message);
+      setOcrState("idle");
+      toast({
+        title: "OCR 驗證失敗",
+        description: `${message}(若是首次執行,請確認網路通暢能下載 8 MB 的 chi_tra 模型)。`,
+        variant: "destructive",
+      });
     }
   };
 
@@ -586,6 +647,108 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                     <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
                       強度越高去得越乾淨,但角色邊緣可能被誤切。建議從預設 {DEFAULT_MATTE_TOLERANCE} 開始試。
                     </p>
+                  )}
+                </div>
+              </div>
+
+              {/* 文字準確度檢查 (P3-6, opt-in OCR via tesseract.js) */}
+              <div
+                className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4 mb-4"
+                data-testid="ocr-controls"
+              >
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <ScanText className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-bold">文字準確度檢查</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleVerifyOcr}
+                      disabled={ocrState === "loading" || tiles.length === 0}
+                      className="rounded-full text-xs h-8"
+                      data-testid="ocr-verify-button"
+                    >
+                      {ocrState === "loading" ? (
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          {ocrProgress.total > 0
+                            ? `辨識中 ${ocrProgress.done}/${ocrProgress.total}`
+                            : "載入 OCR 模型..."}
+                        </>
+                      ) : ocrResult ? (
+                        <>
+                          <ScanText className="w-3 h-3 mr-1" />
+                          重新檢查
+                        </>
+                      ) : (
+                        <>
+                          <ScanText className="w-3 h-3 mr-1" />
+                          檢查文字準確度
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    AI 偶爾會把中文寫成形似的錯字。點上方按鈕會抽樣 12 張用 OCR 比對,告訴你哪幾格可能寫錯了。首次執行需下載 8 MB 中文模型,請保持網路通暢。
+                  </p>
+                  {ocrError && (
+                    <p className="text-[11px] text-destructive font-medium leading-relaxed pt-1">
+                      錯誤:{ocrError}
+                    </p>
+                  )}
+                  {ocrResult && (
+                    <div className="mt-2 rounded-xl bg-background/80 border border-border p-3 space-y-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        {ocrResult.mismatches.length === 0 ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-[#06C755]" />
+                            <span className="font-bold text-foreground">全部正確!</span>
+                            <span className="text-muted-foreground">
+                              抽樣 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%。
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-amber-500" />
+                            <span className="font-bold text-foreground">
+                              {ocrResult.mismatches.length} 處可能寫錯
+                            </span>
+                            <span className="text-muted-foreground">
+                              (抽樣 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%)
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      {ocrResult.mismatches.length > 0 && (
+                        <ul className="space-y-1 pt-1">
+                          {ocrResult.mismatches.map((m) => (
+                            <li
+                              key={m.index}
+                              className="text-xs text-foreground/90 flex items-center gap-2"
+                            >
+                              <span className="inline-flex w-6 h-6 rounded-full bg-amber-500/15 text-amber-700 items-center justify-center font-bold">
+                                {m.index + 1}
+                              </span>
+                              <span>
+                                期待<strong>「{m.expected}」</strong>
+                                ,但 OCR 辨識為
+                                <strong className="text-amber-700">「{m.recognized || "(空白)"}」</strong>
+                                <span className="text-muted-foreground ml-1">
+                                  ({Math.round(m.similarity * 100)}% 相符)
+                                </span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {ocrResult.mismatches.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
+                          建議:點「再做一組」回上頁,把錯誤的格子文字稍微改寫(如加標點、換同義詞),再重新生成。OCR 也有少量誤判,以肉眼確認為準。
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
