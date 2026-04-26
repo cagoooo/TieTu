@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./image": "./src/image.ts"
+    "./image": "./src/image.ts",
+    "./text": "./src/text.ts"
   },
   "dependencies": {
     "@google/genai": "^1.50.1"

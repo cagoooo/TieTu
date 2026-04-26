@@ -2,7 +2,7 @@ import { useState, useRef, useImperativeHandle, forwardRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Upload, Image as ImageIcon, Sparkles, Wand2, ShieldCheck } from "lucide-react";
+import { Upload, Image as ImageIcon, Sparkles, Wand2, ShieldCheck, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { DEFAULT_TEXTS, getThemeTexts, fileToBase64 } from "@/lib/sticker-utils";
+import { DEFAULT_TEXTS, fileToBase64 } from "@/lib/sticker-utils";
+import { customFetch, ApiError } from "@workspace/api-client-react";
 import { TurnstileWidget, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || "";
@@ -43,6 +44,7 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
   const [isDragging, setIsDragging] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const [isApplyingTheme, setIsApplyingTheme] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
   const { toast } = useToast();
@@ -114,12 +116,56 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
     }
   };
 
-  const handleApplyTheme = () => {
-    form.setValue("texts", getThemeTexts(theme || ""));
-    toast({
-      title: "已套用主題",
-      description: "文字已根據主題更新！",
-    });
+  const handleApplyTheme = async () => {
+    const trimmedTheme = (theme ?? "").trim();
+    if (!trimmedTheme) {
+      toast({
+        title: "請先輸入主題",
+        description: "在左側「設定主題」欄輸入關鍵字（例如「馬年祝賀」「太空人」），再按一次依主題改寫。",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsApplyingTheme(true);
+    try {
+      const currentTexts = form.getValues("texts");
+      const data = await customFetch<{ texts: string[] }>("/api/stickers/rewrite-texts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          theme: trimmedTheme,
+          originalTexts: currentTexts,
+        }),
+      });
+
+      if (!Array.isArray(data?.texts) || data.texts.length !== 24) {
+        throw new Error("伺服器回傳的文字格式不對。");
+      }
+
+      form.setValue("texts", data.texts);
+      toast({
+        title: "已依主題改寫",
+        description: `24 個貼圖文字都已換成「${trimmedTheme}」相關內容,可再手動微調。`,
+      });
+    } catch (error) {
+      let description = "請稍後再試,或先點「恢復預設」重來。";
+      if (error instanceof ApiError) {
+        const data = error.data as { error?: string } | null;
+        if (data?.error) {
+          description = data.error;
+        }
+      } else if (error instanceof Error && error.message) {
+        description = error.message;
+      }
+      toast({
+        title: "主題改寫失敗",
+        description,
+        variant: "destructive",
+      });
+    } finally {
+      setIsApplyingTheme(false);
+    }
   };
 
   const handleResetTexts = () => {
@@ -259,12 +305,29 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
               <div className="flex items-center justify-between mb-6">
                 <Label className="text-lg font-bold block m-0">3. 自訂貼圖文字 (24張)</Label>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleResetTexts} className="rounded-full text-xs h-8">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetTexts}
+                    disabled={isApplyingTheme}
+                    className="rounded-full text-xs h-8"
+                  >
                     恢復預設
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={handleApplyTheme} disabled={!theme} className="rounded-full text-xs h-8 bg-primary/10 text-primary hover:bg-primary/20">
-                    <Wand2 className="w-3 h-3 mr-1" />
-                    依主題改寫
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleApplyTheme}
+                    disabled={!theme || isApplyingTheme}
+                    className="rounded-full text-xs h-8 bg-primary/10 text-primary hover:bg-primary/20"
+                    data-testid="apply-theme-button"
+                  >
+                    {isApplyingTheme ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-3 h-3 mr-1" />
+                    )}
+                    {isApplyingTheme ? "AI 改寫中…" : "依主題改寫"}
                   </Button>
                 </div>
               </div>

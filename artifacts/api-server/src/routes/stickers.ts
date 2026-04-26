@@ -1,9 +1,11 @@
 import { Router, type IRouter } from "express";
+import { z } from "zod/v4";
 import {
   GenerateStickerSheetBody,
   GenerateStickerSheetResponse,
 } from "@workspace/api-zod";
 import { generateStickerSheet } from "@workspace/integrations-gemini-server/image";
+import { rewriteTexts } from "@workspace/integrations-gemini-server/text";
 import { logger } from "../lib/logger";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
 
@@ -185,5 +187,42 @@ router.post(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// POST /api/stickers/rewrite-texts
+// Asks Gemini text model to rewrite all 24 labels so they're cohesively tied
+// to a user-supplied theme. Used by the SPA's "依主題改寫" button on the
+// upload page.
+// ---------------------------------------------------------------------------
+
+const RewriteTextsBody = z.object({
+  theme: z.string().min(1, "主題不可為空").max(50, "主題請限制 50 字內").trim(),
+  originalTexts: z.array(z.string()).length(24, "originalTexts 必須剛好 24 個元素"),
+});
+
+router.post("/stickers/rewrite-texts", verifyTurnstile(), async (req, res) => {
+  const parsed = RewriteTextsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: `請求格式錯誤：${parsed.error.issues
+        .map((i) => `${i.path.join(".")} ${i.message}`)
+        .join("; ")}`,
+    });
+    return;
+  }
+
+  try {
+    const texts = await rewriteTexts({
+      theme: parsed.data.theme,
+      originalTexts: parsed.data.originalTexts,
+    });
+    res.json({ texts });
+  } catch (err) {
+    logger.error({ err, theme: parsed.data.theme }, "Theme rewrite failed");
+    const message =
+      err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
+    res.status(500).json({ error: `主題改寫失敗：${message}` });
+  }
+});
 
 export default router;
