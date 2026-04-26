@@ -3,7 +3,7 @@ import {
   GenerateStickerSheetBody,
   GenerateStickerSheetResponse,
 } from "@workspace/api-zod";
-import { editImagesFromBuffers } from "@workspace/integrations-openai-ai-server/image";
+import { generateStickerSheet } from "@workspace/integrations-gemini-server/image";
 import { logger } from "../lib/logger";
 import { rateLimit } from "../middlewares/rate-limit";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
@@ -186,17 +186,11 @@ router.post(
     const prompt = buildPrompt(texts, theme ?? null);
 
     try {
-      const sheetBuffer = await editImagesFromBuffers(
-        [
-          {
-            buffer: decoded.buffer,
-            filename: decoded.filename,
-            mimeType: decoded.mimeType,
-          },
-        ],
+      const sheetBuffer = await generateStickerSheet({
+        photoBuffer: decoded.buffer,
+        photoMimeType: decoded.mimeType,
         prompt,
-        "1024x1536",
-      );
+      });
 
       const payload = GenerateStickerSheetResponse.parse({
         imageBase64: sheetBuffer.toString("base64"),

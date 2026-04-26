@@ -1,0 +1,57 @@
+name: Deploy to Firebase (TieTu)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Prevent overlapping deploys; if a new push lands while one is running, queue
+# the latest and cancel the in-flight build to avoid pushing stale artifacts.
+concurrency:
+  group: firebase-tietu-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build SPA
+        env:
+          PORT: 23937
+          BASE_PATH: /
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
+        run: pnpm --filter @workspace/sticker-studio run build
+
+      - name: Build functions
+        run: pnpm --filter tietu-functions run build
+
+      # ⚠️ The deploy command is ALWAYS scoped with `--only` flags so we never
+      # touch other Firebase projects' resources. We restrict to:
+      #   - hosting:tietu       (only the "tietu" hosting target)
+      #   - functions:tietu     (only the "tietu" codebase declared in firebase.json)
+      # This guards against accidentally deleting other apps' Cloud Functions.
+      - name: Deploy to Firebase
+        uses: w9jds/firebase-action@v14.10.1
+        with:
+          args: deploy --only "hosting:tietu,functions:tietu" --project ${{ secrets.FIREBASE_PROJECT_ID }} --force
+        env:
+          # --force here only suppresses CI prompts. The --only "hosting:tietu,functions:tietu"
+          # scope keeps the deploy fenced to the TieTu codebase only — Cloud
+          # Functions belonging to other apps in the same Firebase project
+          # (e.g. zhuyin-challenge-v3) are NEVER candidates for deletion.
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

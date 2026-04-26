@@ -4,7 +4,7 @@
 
 | 介面 | 後端 | 模型 | 部署 |
 |---|---|---|---|
-| Vite + React 19 + Tailwind 4 + shadcn/ui | Express 5(monorepo)→ Cloud Functions v2 | OpenAI `gpt-image-1`(1024×1536) | **GitHub + Firebase**(主推) |
+| Vite + React 19 + Tailwind 4 + shadcn/ui | Express 5(monorepo)→ Cloud Functions v2 | **Google Gemini 2.5 Flash Image**(`gemini-2.5-flash-image-preview`,multimodal IMAGE output) | **GitHub + Firebase**(主推) |
 
 ---
 
@@ -41,7 +41,7 @@
 - **照片上傳**:JPG / PNG / WEBP / HEIC,前端用 magic bytes 驗,上限 10 MB
 - **主題客製**:輸入關鍵字(如「馬年、太空人、黏土風」),一鍵套用到 24 格
 - **24 格自訂文字**:每格 1–8 字繁中,可單獨修改
-- **AI 生成**:OpenAI `gpt-image-1` 影像編輯,1024×1536 直式單張
+- **AI 生成**:Google Gemini 2.5 Flash Image(Nano Banana Pro)multimodal,輸入照片 + prompt 生成 4×6 sticker sheet
 - **客戶端切片**:Canvas 切成 24 張獨立 PNG
 - **單張微調**:旋轉 ±15°、平移 ±15%、縮放 80–120%,即時預覽
 - **三種下載格式**:整張 PNG、24 張 ZIP、**LINE 上架版 ZIP**(24 張 370×320 + main.png 240×240 + tab.png 96×74 + README.txt)
@@ -78,14 +78,14 @@
 - 日誌:pino + pino-http
 - DB:PostgreSQL + Drizzle ORM
 - 打包:esbuild ESM bundle → `dist/index.mjs`
-- AI:`openai` SDK 6.x
+- AI:`@google/genai` SDK 1.x(Gemini multimodal)
 
 ### 共用 lib
 - `lib/db` — Drizzle schema(`rate_limit_events`、`conversations`、`messages`)
 - `lib/api-spec` — OpenAPI 3.1 YAML(codegen 來源)
 - `lib/api-zod` — Orval 產生的 Zod schemas(`generated/` 已 ready)
 - `lib/api-client-react` — Orval 產生的 React Query hooks + customFetch
-- `lib/integrations-openai-ai-server` — OpenAI 後端 wrapper
+- `lib/integrations-gemini-server` — Gemini 後端 wrapper(`@google/genai` SDK,multimodal image generation)
 
 ### 資料庫
 - PostgreSQL 16
@@ -151,9 +151,8 @@ TieTu/
 │   ├── api-zod/                  # 已 generated 的 Zod schemas
 │   ├── api-client-react/         # 已 generated 的 React Query hooks + customFetch
 │   ├── db/                       # Drizzle schema + drizzle-kit config
-│   ├── integrations-openai-ai-server/   # OpenAI 後端 wrapper
-│   ├── integrations-openai-ai-react/    # 預留前端 wrapper(未使用)
-│   └── integrations/openai_ai_integrations/   # Replit-managed integration(未引用)
+│   ├── integrations-gemini-server/      # Gemini 後端 wrapper(@google/genai)
+│   └── integrations/openai_ai_integrations/   # Replit-managed integration(未引用,可保留或刪除)
 │
 ├── scripts/
 │   └── post-merge.sh             # `pnpm install` + `db push`(Replit hook)
@@ -171,8 +170,8 @@ TieTu/
 | `PORT` | ✅ | — | 監聽埠 |
 | `NODE_ENV` |  | `development` | `production` 時強制要求 `TURNSTILE_SECRET_KEY` |
 | `DATABASE_URL` | ✅ | — | Postgres 連線字串 |
-| `AI_INTEGRATIONS_OPENAI_BASE_URL` | ✅ | — | OpenAI base(直連填 `https://api.openai.com/v1`) |
-| `AI_INTEGRATIONS_OPENAI_API_KEY` | ✅ | — | OpenAI API key |
+| `GEMINI_API_KEY` | ✅ | — | Google AI Studio API key([aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey),格式 `AIzaSy...`) |
+| `GEMINI_IMAGE_MODEL` |  | `gemini-2.5-flash-image-preview` | 部署前用 ListModels 確認 model 還在,必要時 override |
 | `TURNSTILE_SECRET_KEY` | dev 選 / prod 必 | — | Cloudflare Turnstile secret |
 | `STICKER_RATE_LIMIT_PER_MINUTE` |  | `3` | 每分鐘上限 |
 | `STICKER_RATE_LIMIT_PER_DAY` |  | `30` | 每日上限 |
@@ -198,7 +197,7 @@ TieTu/
 - **Node.js 24+**(`nvm install 24 && nvm use 24`)
 - **pnpm 10+**(`corepack enable && corepack prepare pnpm@latest --activate`)
 - **Postgres 16**(本機 Docker:`docker run -d --name pg-tietu -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:16`)
-- **OpenAI API key**([platform.openai.com](https://platform.openai.com/api-keys))
+- **Gemini API key**([aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey);free tier 已可跑 1500 RPD)
 
 ### 步驟
 
@@ -209,8 +208,8 @@ pnpm install
 # 2. 設 env(api-server)
 export PORT=8080 NODE_ENV=development
 export DATABASE_URL="postgresql://postgres:dev@localhost:5432/tietu"
-export AI_INTEGRATIONS_OPENAI_BASE_URL="https://api.openai.com/v1"
-export AI_INTEGRATIONS_OPENAI_API_KEY="sk-..."
+export GEMINI_API_KEY="AIzaSy..."
+# Optional: export GEMINI_IMAGE_MODEL="gemini-2.5-flash-image-preview"
 
 # 3. 設 env(sticker-studio)— 另一個 terminal
 export PORT=23937 BASE_PATH="/"
@@ -327,7 +326,7 @@ pnpm --filter @workspace/sticker-studio run dev
 3. **Zod 驗證 body**
 4. **`decodePhoto()`**:base64 → magic bytes 檢查(PNG/JPEG/WEBP/HEIC)
 5. **`buildPrompt()`**:組長 prompt(4×6 排版、白色 die-cut 框、12 px 安全區、文字必須完整顯示)
-6. **`editImagesFromBuffers()`** → OpenAI `gpt-image-1` `images.edit`,size `1024x1536`
+6. **`generateStickerSheet()`** → Gemini `gemini-2.5-flash-image-preview` multimodal `generateContent`,`responseModalities: [IMAGE]`,`thinkingConfig: { thinkingBudget: 0 }`
 7. 回傳:
 ```json
 {
@@ -435,9 +434,9 @@ pnpm --filter @workspace/db run push-force    # 強制(會 drop;限 dev)
 | API | **Cloud Functions v2**(wrap Express) | $0(2M invocations / 400K GB-sec free) |
 | Postgres | **Neon free tier** | $0(0.5 GB) |
 | Captcha | **Cloudflare Turnstile** | $0 |
-| OpenAI | 直連 | **每張 USD 0.16–0.19**(務必設帳單上限) |
+| Gemini API | Google AI Studio | **Free tier 1500 RPD**;付費約 USD 0.04/張(比 OpenAI 便宜很多) |
 
-> ⚠️ **Firebase 必須升 Blaze plan(綁信用卡)** 才能讓 Cloud Functions 呼叫外部 API(OpenAI)。Spark plan 鎖在 Google services 內。但 Blaze 有 free quota,小規模幾乎免費 → 實際 **$0**(不算 OpenAI)。**務必設 GCP Budget Alert + Hard Limit**。
+> ⚠️ **Firebase 必須升 Blaze plan(綁信用卡)** 才能讓 Cloud Functions 呼叫外部 HTTPS。Spark plan 鎖在 Google services 內(雖然 Gemini API 也是 Google 服務,但走 `generativelanguage.googleapis.com` 仍算外部呼叫)。Blaze 有 free quota,小規模幾乎免費 → 實際 **$0**(不算 Gemini)。**務必設 GCP Budget Alert + Hard Limit**。
 
 ### 12.2 移植前必改清單
 
@@ -489,11 +488,11 @@ Hosting + Functions 同網域時不設這個 env,走相對路徑。
 
 #### Step 1 — 推 repo 到 GitHub
 ```bash
-git remote add origin https://github.com/<you>/tietu-sticker.git
+git remote add origin https://github.com/cagoooo/TieTu.git    # 若你 fork 出去,改成自己的 URL
 git branch -M main
 git push -u origin main
 ```
-推前先 `git grep -nE "AI_INTEGRATIONS_OPENAI_API_KEY|sk-[a-zA-Z0-9]{20,}|TURNSTILE_SECRET"` 確認沒外洩 secret。
+推前先 `git grep -nE "GEMINI_API_KEY|AIzaSy[A-Za-z0-9_-]{30,}|TURNSTILE_SECRET"` 確認沒外洩 secret。
 
 #### Step 2 — Neon Postgres
 1. [neon.tech](https://neon.tech) → 建 project(region:Singapore)
@@ -504,27 +503,68 @@ git push -u origin main
    ```
 > 📌 Functions 在 Cloud Run 後面,**用 Pooled URL**(每 request 新建連線);Direct URL 在 multi-instance 會耗盡 Postgres connection。
 
-#### Step 3 — Cloudflare Turnstile + OpenAI key
-- Turnstile:[Cloudflare Dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) → Add Site,domain 填 `<project-id>.web.app` 與 `<project-id>.firebaseapp.com`,拿 Site Key + Secret Key
-- OpenAI:[platform.openai.com](https://platform.openai.com),建 key,**Settings → Limits → Hard limit USD 50/mo**
+#### Step 3 — Cloudflare Turnstile + Gemini key
+- **Turnstile**:[Cloudflare Dashboard](https://dash.cloudflare.com/?to=/:account/turnstile) → Add Site,domain 填 hosting 自訂域名 + `<site-name>.web.app`,拿 Site Key + Secret Key
+- **Gemini API key**:[aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API key(預設綁到當前 Google project,可選擇 `zhuyin-challenge-v3-4cd2b` 共用 quota)
+- **驗證 model 還在**(必做):
+  ```bash
+  curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSy..." \
+    | grep -oE '"name":\s*"models/gemini-[^"]*image[^"]*"'
+  ```
+  確認看到 `gemini-2.5-flash-image-preview`(或同等的 image model)。如果改名,設 env `GEMINI_IMAGE_MODEL=...` 覆蓋。
 
-#### Step 4 — Firebase 專案 + Blaze
-1. [console.firebase.google.com](https://console.firebase.google.com) → Add project(名 `tietu-sticker`,disable Analytics)
-2. 升 Blaze plan(綁卡)
-3. **GCP Console → Billing → Budgets & alerts** 建 USD 10/mo 預算 + 50%/90%/100% email
-4. 啟用 Hosting、Functions(會自動啟用 Cloud Build / Artifact Registry / Secret Manager API)
-5. 記下 Project ID(例 `tietu-sticker`)
+#### Step 4 — 在既有 Firebase 專案加新 Web App + Hosting Site
 
-#### Step 5 — 加 Firebase 設定到 repo
+> ⚠️ **本專案部署到既有 `zhuyin-challenge-v3-4cd2b` 專案**(而非建新 project)。
+> 必須嚴格按 [`firebase-multi-app-safety` skill](https://github.com/anthropic-ai/skills) 的多應用隔離原則:
+> - codebase 名稱 `tietu`(不是 `default`)
+> - function export `tietu_api`(不會跟 zhuyin 將來加的 function 撞)
+> - secrets 全用 `TIETU_*` 前綴
+> - deploy 永遠 `--only functions:tietu`(不可用 `--only functions`)
 
-**`firebase.json`**(repo 根目錄):
+**4.1 — Pre-flight 確認沒衝突**(本機跑):
+```bash
+firebase login                                                         # 確認登入帳號
+firebase functions:list --project=zhuyin-challenge-v3-4cd2b           # 列既有 functions(有衝突命名要避開)
+firebase apps:list --project=zhuyin-challenge-v3-4cd2b                # 列既有 web apps
+firebase hosting:sites:list --project=zhuyin-challenge-v3-4cd2b       # 列既有 hosting sites
+```
+本專案 Pre-flight 結果:0 functions、1 web app(Zhuyin)、1 hosting site(default = `zhuyin-challenge-v3-4cd2b.web.app`)。**無衝突**。
+
+**4.2 — 在 Firebase Console 建第二個 Web App**(GUI):
+1. 進 [console.firebase.google.com](https://console.firebase.google.com) → 選 `zhuyin-challenge-v3-4cd2b`
+2. **Project Overview** → 點齒輪圖示 → **Project settings** → 在「Your apps」段點「**Add app**」→ 選 Web 圖示
+3. **App nickname**:`TieTu`(注意大小寫,跟 Zhuyin Web App v3 並列)
+4. **不要勾** Firebase Hosting(等下另開獨立 site)
+5. Register app — 取得 firebaseConfig 對象(本專案前端目前不用 Firebase SDK,所以暫不需要這個 config;**留著備用**,將來要加 Firebase Auth / Analytics 時會用到)
+
+**4.3 — 在 Hosting 加第二個 Site**(關鍵 — 不會覆蓋 zhuyin 的網站):
+1. Console → **Hosting** → 點「**Add another site**」
+2. 輸入新 site ID:`tietu`(或 `tietu-sticker`,如果 `tietu` 已被全球佔用)
+3. 完成 → 取得網址 `https://tietu.web.app`(或同名)
+
+**4.4 — Blaze plan 與 Budget Alert**:
+- 如果 `zhuyin-challenge-v3-4cd2b` 還是 Spark plan,進 Console 左下角升 **Blaze**(綁信用卡)
+- **GCP Console → Billing → Budgets & alerts** 建 USD 10/mo 預算 + 50%/90%/100% email
+- 確認啟用 Cloud Functions / Cloud Build / Artifact Registry / Secret Manager API(部署時會自動觸發)
+
+**4.5 — 啟用 Generative Language API**(讓 GCP 能呼叫 Gemini):
+雖然 Gemini API 是用 AI Studio key auth,Cloud Functions 跑時的 outbound HTTPS 會打 `generativelanguage.googleapis.com`,Blaze plan 必開即可,**不需額外 enable Vertex AI**(我們不走 Vertex)。
+
+#### Step 5 — 加 Firebase 設定到 repo(本 repo 已包含,僅供參考)
+
+> ✅ 這份 repo 已經把 `firebase.json`、`.firebaserc`、`functions/` wrapper 都建好。
+> 如果你 fork 出去自己改,以下是參考內容。
+
+**`firebase.json`**(repo 根目錄)— 注意 `hosting.target: "tietu"` 必須 + `functions.codebase: "tietu"`:
 ```json
 {
   "hosting": {
+    "target": "tietu",
     "public": "artifacts/sticker-studio/dist/public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
-      { "source": "/api/**", "function": { "functionId": "tietuApi", "region": "asia-east1" } },
+      { "source": "/api/**", "function": { "functionId": "tietu_api", "region": "asia-east1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [
@@ -551,7 +591,18 @@ git push -u origin main
 
 **`.firebaserc`**:
 ```json
-{ "projects": { "default": "tietu-sticker" } }
+{
+  "projects": {
+    "default": "zhuyin-challenge-v3-4cd2b"
+  },
+  "targets": {
+    "zhuyin-challenge-v3-4cd2b": {
+      "hosting": {
+        "tietu": []
+      }
+    }
+  }
+}
 ```
 
 **`.gitignore`** 補一行:`.firebase/`
@@ -576,7 +627,7 @@ functions/
   "main": "lib/index.js",
   "scripts": {
     "build": "node ./build.mjs",
-    "deploy": "pnpm run build && firebase deploy --only functions:tietuApi"
+    "deploy": "pnpm run build && firebase deploy --only functions:tietu"
   },
   "dependencies": {
     "firebase-functions": "^6.0.0",
@@ -612,31 +663,43 @@ await build({
 console.log("✓ Built functions/lib/index.js");
 ```
 
-**`functions/src/index.ts`**(import Express app + 注入 secrets):
+**`functions/src/index.ts`**(import Express app + 注入 TIETU_-prefixed secrets):
 ```ts
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
-import type { Request, Response } from "express";
 
-const DATABASE_URL = defineSecret("DATABASE_URL");
-const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
-const TURNSTILE_SECRET_KEY = defineSecret("TURNSTILE_SECRET_KEY");
-const STICKER_RATE_LIMIT_PER_MINUTE = defineSecret("STICKER_RATE_LIMIT_PER_MINUTE");
-const STICKER_RATE_LIMIT_PER_DAY = defineSecret("STICKER_RATE_LIMIT_PER_DAY");
+// All secrets use the TIETU_ prefix to coexist safely with any other apps in
+// the same Firebase project (see firebase-multi-app-safety skill).
+const TIETU_DATABASE_URL = defineSecret("TIETU_DATABASE_URL");
+const TIETU_GEMINI_API_KEY = defineSecret("TIETU_GEMINI_API_KEY");
+const TIETU_TURNSTILE_SECRET_KEY = defineSecret("TIETU_TURNSTILE_SECRET_KEY");
+const TIETU_RATE_LIMIT_PER_MINUTE = defineSecret("TIETU_RATE_LIMIT_PER_MINUTE");
+const TIETU_RATE_LIMIT_PER_DAY = defineSecret("TIETU_RATE_LIMIT_PER_DAY");
 
-process.env.AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.openai.com/v1";
+// firebase-functions ships @types/express-serve-static-core@4 while api-server
+// uses Express 5; types differ but runtime is compatible.
+type RequestHandler = (req: unknown, res: unknown) => void;
 
-let _app: any = null;
-async function getApp() {
-  if (_app) return _app;
-  process.env.AI_INTEGRATIONS_OPENAI_API_KEY = OPENAI_API_KEY.value();
-  const mod = await import("../../artifacts/api-server/src/app");
-  _app = mod.default;
-  return _app;
+let _appPromise: Promise<RequestHandler> | null = null;
+async function getApp(): Promise<RequestHandler> {
+  if (_appPromise) return _appPromise;
+  _appPromise = (async () => {
+    // Map TIETU_-prefixed secrets to env names the existing Express app expects.
+    process.env.DATABASE_URL = TIETU_DATABASE_URL.value();
+    process.env.GEMINI_API_KEY = TIETU_GEMINI_API_KEY.value();
+    process.env.TURNSTILE_SECRET_KEY = TIETU_TURNSTILE_SECRET_KEY.value();
+    process.env.STICKER_RATE_LIMIT_PER_MINUTE = TIETU_RATE_LIMIT_PER_MINUTE.value();
+    process.env.STICKER_RATE_LIMIT_PER_DAY = TIETU_RATE_LIMIT_PER_DAY.value();
+    process.env.TRUST_PROXY = process.env.TRUST_PROXY ?? "2";
+    // CORS allowlist intentionally unset — Hosting rewrites keep us same-origin.
+    const mod = (await import("@workspace/api-server/app")) as { default: RequestHandler };
+    return mod.default;
+  })();
+  return _appPromise;
 }
 
-export const tietuApi = onRequest(
+export const tietu_api = onRequest(
   {
     region: "asia-east1",
     timeoutSeconds: 540,
@@ -645,15 +708,17 @@ export const tietuApi = onRequest(
     concurrency: 80,
     cpu: 1,
     invoker: "public",
-    secrets: [DATABASE_URL, OPENAI_API_KEY, TURNSTILE_SECRET_KEY, STICKER_RATE_LIMIT_PER_MINUTE, STICKER_RATE_LIMIT_PER_DAY],
+    secrets: [TIETU_DATABASE_URL, TIETU_GEMINI_API_KEY, TIETU_TURNSTILE_SECRET_KEY, TIETU_RATE_LIMIT_PER_MINUTE, TIETU_RATE_LIMIT_PER_DAY],
   },
-  async (req: Request, res: Response): Promise<void> => {
+  async (req, res) => {
     try {
       const app = await getApp();
       app(req, res);
     } catch (err) {
-      logger.error("Function entry error", err);
-      res.status(500).json({ error: "Internal server error" });
+      logger.error("[tietu_api] Function entry error", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Internal server error" });
+      }
     }
   },
 );
@@ -670,31 +735,43 @@ packages:
 ```
 然後 `pnpm install`。
 
-#### Step 7 — 設 secrets + 第一次手動部署
+#### Step 7 — 綁 hosting target、設 secrets、第一次手動部署
 ```bash
 npm i -g firebase-tools
 firebase login
 
-firebase functions:secrets:set DATABASE_URL          # 貼 Neon pooled URL
-firebase functions:secrets:set OPENAI_API_KEY        # 貼 OpenAI key
-firebase functions:secrets:set TURNSTILE_SECRET_KEY  # 貼 Turnstile secret
-firebase functions:secrets:set STICKER_RATE_LIMIT_PER_MINUTE   # 輸入 3
-firebase functions:secrets:set STICKER_RATE_LIMIT_PER_DAY      # 輸入 30
+# 7.1 — 把 firebase.json 內的 hosting target "tietu" 綁定到 Step 4.3 建立的
+#       hosting site(預設名 "tietu";若被佔用則用實際名稱,如 "tietu-sticker")。
+#       這個 target apply 結果會寫進 .firebaserc 的 targets 區段。
+firebase target:apply hosting tietu tietu --project=zhuyin-challenge-v3-4cd2b
 
+# 7.2 — 設 secrets。TIETU_ 前綴與 zhuyin 等其他應用安全共存。
+firebase functions:secrets:set TIETU_DATABASE_URL          # 貼 Neon pooled URL
+firebase functions:secrets:set TIETU_GEMINI_API_KEY        # 貼 AIzaSy 開頭的 Gemini API key
+firebase functions:secrets:set TIETU_TURNSTILE_SECRET_KEY  # 貼 Turnstile secret
+firebase functions:secrets:set TIETU_RATE_LIMIT_PER_MINUTE # 輸入 3
+firebase functions:secrets:set TIETU_RATE_LIMIT_PER_DAY    # 輸入 30
+
+# 7.3 — Build SPA + Functions
 PORT=23937 BASE_PATH=/ \
   VITE_TURNSTILE_SITE_KEY="<site-key>" \
   pnpm --filter @workspace/sticker-studio run build
 
 pnpm --filter tietu-functions run build
 
-firebase deploy --only hosting,functions:tietuApi
+# 7.4 — 部署 — ⚠️ 一定要 --only 限定 codebase!
+firebase deploy --only "hosting:tietu,functions:tietu" --project=zhuyin-challenge-v3-4cd2b
 ```
 
-> ⚠️ **絕對不要** `firebase deploy --force` 或 `--only functions`(沒 `:tietuApi` 後綴)。`--force` 會無聲砍掉這個 GCP project 上**任何**現存 functions(即使是別 codebase)。永遠用 `:tietuApi` 限定。
+> 🛡️ **Multi-app safety**:
+> - **絕對不要** `firebase deploy` 或 `firebase deploy --only functions`(沒指定 codebase)— 會把 Zhuyin 等其他應用的 Cloud Functions 砍光
+> - **絕對不要** `--force` 配合無 `--only`(雙重危險)
+> - 永遠用 `--only "hosting:tietu,functions:tietu"`(`tietu` 是 codebase 名稱,在 `firebase.json` 內定義;這個 codebase 內目前只有 `tietu_api` 一個 function)
+> - 部署前可跑 `firebase functions:list --project=zhuyin-challenge-v3-4cd2b` 看看是否有非預期的 function,確認 zhuyin 等應用安全
 
-完成後 CLI 印出 `https://tietu-sticker.web.app`,試:
+完成後 CLI 印出 `https://tietu.web.app`(或自定 site 名),試:
 ```bash
-curl https://tietu-sticker.web.app/api/healthz
+curl https://tietu.web.app/api/healthz
 # {"status":"ok"}
 ```
 
@@ -704,10 +781,10 @@ curl https://tietu-sticker.web.app/api/healthz
 | 名稱 | 值 |
 |---|---|
 | `FIREBASE_TOKEN` | `firebase login:ci` 拿到的 token |
-| `FIREBASE_PROJECT_ID` | 例 `tietu-sticker` |
+| `FIREBASE_PROJECT_ID` | `zhuyin-challenge-v3-4cd2b` |
 | `VITE_TURNSTILE_SITE_KEY` | Turnstile site key |
 
-> 📌 OpenAI / DB 等 backend secrets 已在 GCP Secret Manager,不需放 GitHub Secrets。
+> 📌 Gemini / DB 等 backend secrets 已在 GCP Secret Manager(用 `firebase functions:secrets:set TIETU_*` 設),不需放 GitHub Secrets。
 
 **`.github/workflows/ci.yml`**:
 ```yaml
@@ -755,7 +832,7 @@ jobs:
       - name: Deploy to Firebase
         uses: w9jds/firebase-action@v14.10.1
         with:
-          args: deploy --only hosting,functions:tietuApi --project ${{ secrets.FIREBASE_PROJECT_ID }} --force
+          args: deploy --only "hosting:tietu,functions:tietu" --project ${{ secrets.FIREBASE_PROJECT_ID }} --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 ```
@@ -771,14 +848,14 @@ jobs:
 ### 12.4 上線前安全 Checklist
 
 #### 必做
-- [ ] **OpenAI Hard Limit** USD 50/mo
+- [ ] **Gemini API quota** 確認(Free tier 1500 RPD;若超 → [aistudio.google.com](https://aistudio.google.com) 升 paid tier)
 - [ ] **GCP Budget Alert** USD 10/mo + 50%/90%/100% email
 - [ ] **Cloud Functions `maxInstances: 10`** 防暴衝
 - [ ] **Turnstile** site/secret 配對且 production 必填
 - [ ] **CORS allowlist** 設好(同網域可空)
 - [ ] **TRUST_PROXY=2** 適合 Cloud Run
 - [ ] **Secrets 全 rotate** — Replit 搬出來的全換新
-- [ ] `git log -p | grep -E "sk-|secret_"` 無 hit
+- [ ] `git log -p | grep -E "AIzaSy|sk-|secret_"` 無 hit
 - [ ] `.firebase/` 在 `.gitignore`
 
 #### 強烈建議
@@ -807,7 +884,7 @@ jobs:
 |---|---|---|---|
 | P0-1 | **CORS allowlist** | [api-server/src/app.ts:33](artifacts/api-server/src/app.ts:33) | 30 min |
 | P0-2 | **`trust proxy` 改具體 hop** | [api-server/src/app.ts:12](artifacts/api-server/src/app.ts:12) | 15 min |
-| P0-3 | **OpenAI 帳單上限 + 監控告警** | OpenAI Dashboard | 30 min |
+| P0-3 | **Gemini API quota + 部署前 ListModels** | Google AI Studio | 30 min |
 | P0-4 | **Secrets 全面 rotate**(從 Replit 搬出來時) | — | 30 min |
 
 ### P1 — 體驗與品質(上線後 1 週內)
@@ -815,7 +892,7 @@ jobs:
 |---|---|---|
 | P1-1 | Vite dev server 加 `/api` proxy | 15 min |
 | P1-2 | env 集中驗證(用 zod 在啟動時) | 1 hr |
-| P1-3 | OpenAI 失敗訊息**分類**(content_policy / rate_limit / upstream_error / internal) | 1 hr |
+| P1-3 | Gemini 失敗訊息**分類**(safety_block / quota / model_404 / internal),回前端 toast 對應 | 1 hr |
 | P1-4 | 大檔案上傳改 `multipart/form-data`(省 33% 流量,避免 50mb JSON 吃 RAM) | 3 hr |
 | P1-5 | 加 `/api/readyz`(檢查 DB)區分 liveness/readiness | 30 min |
 | P1-6 | Loading 中斷邏輯(`AbortController` + 取消按鈕) | 1 hr |
@@ -844,8 +921,8 @@ jobs:
 | 項 | 內容 | 估時 |
 |---|---|---|
 | P4-1 | 補測試(vitest;rate-limit、verify-turnstile、decodePhoto、buildPrompt、splitImageWithGuides、buildLineStickerPackage) | 1 wk |
-| P4-2 | E2E test(Playwright;upload → mock OpenAI → 切片 → 下載 ZIP) | 1 day |
-| P4-3 | 整理 monorepo(統一 `lib/integrations/openai/`,加 turbo cache) | 1 day |
+| P4-2 | E2E test(Playwright;upload → mock Gemini → 切片 → 下載 ZIP) | 1 day |
+| P4-3 | 整理 monorepo(刪 `lib/integrations/openai_ai_integrations/` 殭屍資料夾,加 turbo cache) | 1 day |
 | P4-4 | 抽 prompt 到設定檔(`lib/sticker-prompts/templates/{style}.txt`) | 0.5 day |
 | P4-5 | 文件持續維護(README、TypeDoc、貢獻指南) | 持續 |
 
@@ -854,7 +931,7 @@ jobs:
 Day 1(2 hr):P0-1 ~ P0-4 全做
 Day 2(3 hr):P1-1、P1-2、P1-3
 Day 3:Firebase 部署(§12)+ Turnstile + 自訂網域
-Day 4–5:觀察 OpenAI usage、pino log 錯誤 pattern,調 RATE_LIMIT_PER_DAY
+Day 4–5:觀察 Gemini usage、pino log 錯誤 pattern,調 RATE_LIMIT_PER_DAY
 Day 6–7:P1-5 readyz、UptimeRobot、Slack/LINE 告警
 ```
 
@@ -875,7 +952,7 @@ Week 11–12:P3-5 進度 + P3-6 OCR 自動重試
 2. **P1-3** 錯誤分類(體感最明顯)
 3. **P2-1** 背景 job(規模一上來必經之痛)
 4. **P3-2** Stripe 付費(免費版不可持續)
-5. **P4-1** 測試(改 prompt / 升 OpenAI 模型版本時不怕)
+5. **P4-1** 測試(改 prompt / 升 Gemini 模型版本時不怕 — 模型棄用速度快)
 
 ---
 
@@ -889,7 +966,7 @@ Week 11–12:P3-5 進度 + P3-6 OCR 自動重試
 | API 回 503 + `暫時無法驗證生成額度` | DB 連線中斷或表不存在 | `pnpm --filter @workspace/db run push` |
 | API 回 403 `請先完成人機驗證` | token 沒帶,或 site/secret 不配對 | 檢查 `VITE_TURNSTILE_SITE_KEY` 與 `TURNSTILE_SECRET_KEY` |
 | API 回 429 + 今天額度用完 | 達 `STICKER_RATE_LIMIT_PER_DAY` | 等 24 小時或調高(注意帳單) |
-| API 回 500 `貼圖生成失敗` | OpenAI 那端錯(quota / safety / 模型 down) | 看 pino log;`gpt-image-1` 偶爾拒絕真人照 |
+| API 回 500 `貼圖生成失敗` | Gemini 端錯(quota / safety block / 模型 deprecated 404) | 看 pino log 內 `Gemini did not return an image` 訊息;若 `model not found` 跑 ListModels 確認 model 還在 |
 | 前端送請求都 404 | Vite dev server 沒 proxy | 加 `server.proxy['/api']`(§5) |
 | 上傳 HEIC 後拋「無法辨識的影像格式」 | magic bytes 對不上罕見 sub-brand | 轉 JPG;或在 `detectMimeFromMagicBytes` 多加 brand |
 | `pnpm install` 卡很久 | `minimumReleaseAge: 1440` 在驗證 | 預期行為,首次裝會慢 |
@@ -901,7 +978,7 @@ Week 11–12:P3-5 進度 + P3-6 OCR 自動重試
 | SPA 路由 `/some-page` 404 | `firebase.json` rewrites 順序錯 | `/api/**` 必須在 `**` 之前 |
 | 同網域但前端打 API 還 CORS | 前端用了 `VITE_API_BASE_URL` 指到別網域 | 留空 → 走相對路徑 |
 | Neon 偶爾 connection refused | Neon free tier 自動暫停 idle compute | 第一次 wake 慢,後續正常;升 paid 或加 retry |
-| 部署完不知道誤砍既有 function | 沒用 `:tietuApi` 限定 codebase | **永遠** `--only functions:tietuApi` |
+| 部署完誤砍 zhuyin 等其他 app 的 function | 沒用 `:tietu` 限定 codebase | **永遠** `--only functions:tietu`(限定 codebase,不是 function name) |
 
 ---
 

@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "zhuyin-challenge-v3-4cd2b"
+  },
+  "targets": {
+    "zhuyin-challenge-v3-4cd2b": {
+      "hosting": {
+        "tietu": []
+      }
+    }
+  }
+}

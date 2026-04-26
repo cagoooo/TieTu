@@ -1,0 +1,16 @@
+{
+  "name": "@workspace/integrations-gemini-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./image": "./src/image.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.50.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

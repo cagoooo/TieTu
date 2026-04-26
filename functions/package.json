@@ -1,0 +1,29 @@
+{
+  "name": "tietu-functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "node ./build.mjs",
+    "deploy": "pnpm run build && firebase deploy --only functions:tietu",
+    "logs": "firebase functions:log --only tietu_api",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.0.1"
+  },
+  "devDependencies": {
+    "@workspace/api-server": "workspace:*",
+    "@workspace/api-zod": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "@workspace/integrations-gemini-server": "workspace:*",
+    "@types/node": "catalog:",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.9.2"
+  }
+}

@@ -63,6 +63,16 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      // Forward /api/* to the backend during local dev. Override target with
+      // VITE_API_PROXY env when running the API on a non-default port. In
+      // Firebase Hosting production, /api/** is rewritten to the
+      // tietu_api Cloud Function via firebase.json — this proxy is dev-only.
+      "/api": {
+        target: process.env.VITE_API_PROXY ?? "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
     },

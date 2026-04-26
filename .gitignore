@@ -47,3 +47,14 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Firebase CLI cache (per-developer, never commit)
+.firebase/
+
+# Cloud Functions build output
+functions/lib/
+
+# Local env files
+.env
+.env.local
+*.env.local
