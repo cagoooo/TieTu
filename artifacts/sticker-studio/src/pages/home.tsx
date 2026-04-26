@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2 } from "lucide-react";
+import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2, Github, GraduationCap, ExternalLink } from "lucide-react";
 import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
 import { StickerHistory } from "@/components/sticker-history";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
@@ -480,8 +480,81 @@ export default function Home() {
           </AnimatePresence>
         </div>
         
-        <footer className="w-full mt-auto pt-12 pb-4 text-center text-sm text-muted-foreground flex items-center justify-center gap-1">
-          用 <Heart className="w-3 h-3 text-red-400" /> 為每一位喜歡貼圖的你打造
+        <footer className="w-full mt-auto pt-16 pb-8" data-testid="site-footer">
+          <div className="mx-auto max-w-3xl">
+            <div className="flex flex-col items-center gap-5 px-4">
+              {/* 主品牌列 */}
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <span>Made with</span>
+                <Heart className="w-4 h-4 text-red-400 fill-red-400 animate-pulse" style={{ animationDuration: "2s" }} />
+                <span>by</span>
+                <a
+                  href="https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline inline-flex items-center gap-1 group"
+                  data-testid="footer-author-link"
+                >
+                  阿凱老師
+                  <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </a>
+                <span>製作</span>
+              </div>
+
+              {/* 連結列 */}
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <a
+                  href="https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background hover:bg-muted hover:border-primary/40 transition-all px-3 py-1.5 text-xs font-medium text-foreground/80 hover:text-foreground shadow-sm"
+                  data-testid="footer-school-link"
+                >
+                  <GraduationCap className="w-3.5 h-3.5 text-primary" />
+                  阿凱老師其他作品
+                  <ExternalLink className="w-3 h-3 opacity-50" />
+                </a>
+                <a
+                  href="https://github.com/cagoooo/TieTu"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background hover:bg-muted hover:border-foreground/30 transition-all px-3 py-1.5 text-xs font-medium text-foreground/80 hover:text-foreground shadow-sm"
+                  data-testid="footer-github-link"
+                >
+                  <Github className="w-3.5 h-3.5" />
+                  GitHub 原始碼
+                  <ExternalLink className="w-3 h-3 opacity-50" />
+                </a>
+                <a
+                  href="https://creator.line.me/zh-hant/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#06C755]/30 bg-[#06C755]/5 hover:bg-[#06C755]/10 transition-all px-3 py-1.5 text-xs font-medium text-[#06C755] shadow-sm"
+                  data-testid="footer-line-link"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  LINE 個人原創市集
+                  <ExternalLink className="w-3 h-3 opacity-50" />
+                </a>
+              </div>
+
+              {/* 細節列 */}
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground/70">
+                <span>由 Google Gemini 2.5 / 3.1 image 模型驅動</span>
+                <span aria-hidden="true">·</span>
+                <span>免費使用,不留照片</span>
+                <span aria-hidden="true">·</span>
+                <a
+                  href="https://github.com/cagoooo/TieTu/issues/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                >
+                  回報問題
+                </a>
+              </div>
+            </div>
+          </div>
         </footer>
 
       </main>
