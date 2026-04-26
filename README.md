@@ -4,7 +4,7 @@
 
 | 介面 | 後端 | 模型 | 部署 |
 |---|---|---|---|
-| Vite + React 19 + Tailwind 4 + shadcn/ui | Express 5(monorepo)→ Cloud Functions v2 | **Google Gemini 2.5 Flash Image**(`gemini-2.5-flash-image-preview`,multimodal IMAGE output) | **GitHub + Firebase**(主推) |
+| Vite + React 19 + Tailwind 4 + shadcn/ui | Express 5(monorepo)→ Cloud Functions v2 | **Google Gemini 2.5 Flash Image**(`gemini-2.5-flash-image`,multimodal IMAGE output) | **GitHub + Firebase**(主推) |
 
 ---
 
@@ -171,7 +171,7 @@ TieTu/
 | `NODE_ENV` |  | `development` | `production` 時強制要求 `TURNSTILE_SECRET_KEY` |
 | `DATABASE_URL` | ✅ | — | Postgres 連線字串 |
 | `GEMINI_API_KEY` | ✅ | — | Google AI Studio API key([aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey),格式 `AIzaSy...`) |
-| `GEMINI_IMAGE_MODEL` |  | `gemini-2.5-flash-image-preview` | 部署前用 ListModels 確認 model 還在,必要時 override |
+| `GEMINI_IMAGE_MODEL` |  | `gemini-2.5-flash-image` | 部署前用 ListModels 確認 model 還在,必要時 override |
 | `TURNSTILE_SECRET_KEY` | dev 選 / prod 必 | — | Cloudflare Turnstile secret |
 | `STICKER_RATE_LIMIT_PER_MINUTE` |  | `3` | 每分鐘上限 |
 | `STICKER_RATE_LIMIT_PER_DAY` |  | `30` | 每日上限 |
@@ -209,7 +209,7 @@ pnpm install
 export PORT=8080 NODE_ENV=development
 export DATABASE_URL="postgresql://postgres:dev@localhost:5432/tietu"
 export GEMINI_API_KEY="AIzaSy..."
-# Optional: export GEMINI_IMAGE_MODEL="gemini-2.5-flash-image-preview"
+# Optional: export GEMINI_IMAGE_MODEL="gemini-2.5-flash-image"
 
 # 3. 設 env(sticker-studio)— 另一個 terminal
 export PORT=23937 BASE_PATH="/"
@@ -326,7 +326,7 @@ pnpm --filter @workspace/sticker-studio run dev
 3. **Zod 驗證 body**
 4. **`decodePhoto()`**:base64 → magic bytes 檢查(PNG/JPEG/WEBP/HEIC)
 5. **`buildPrompt()`**:組長 prompt(4×6 排版、白色 die-cut 框、12 px 安全區、文字必須完整顯示)
-6. **`generateStickerSheet()`** → Gemini `gemini-2.5-flash-image-preview` multimodal `generateContent`,`responseModalities: [IMAGE]`,`thinkingConfig: { thinkingBudget: 0 }`
+6. **`generateStickerSheet()`** → Gemini `gemini-2.5-flash-image` multimodal `generateContent`,`responseModalities: [IMAGE]`,`thinkingConfig: { thinkingBudget: 0 }`
 7. 回傳:
 ```json
 {
@@ -511,7 +511,7 @@ git push -u origin main
   curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSy..." \
     | grep -oE '"name":\s*"models/gemini-[^"]*image[^"]*"'
   ```
-  確認看到 `gemini-2.5-flash-image-preview`(或同等的 image model)。如果改名,設 env `GEMINI_IMAGE_MODEL=...` 覆蓋。
+  確認看到 `gemini-2.5-flash-image`(或同等的 image model)。如果改名,設 env `GEMINI_IMAGE_MODEL=...` 覆蓋。
 
 #### Step 4 — 在既有 Firebase 專案加新 Web App + Hosting Site
 

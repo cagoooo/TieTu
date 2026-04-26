@@ -35,9 +35,18 @@ async function getApp(): Promise<RequestHandler> {
     // dynamically importing the app.
     process.env.DATABASE_URL = TIETU_DATABASE_URL.value();
     process.env.GEMINI_API_KEY = TIETU_GEMINI_API_KEY.value();
-    process.env.TURNSTILE_SECRET_KEY = TIETU_TURNSTILE_SECRET_KEY.value();
     process.env.STICKER_RATE_LIMIT_PER_MINUTE = TIETU_RATE_LIMIT_PER_MINUTE.value();
     process.env.STICKER_RATE_LIMIT_PER_DAY = TIETU_RATE_LIMIT_PER_DAY.value();
+
+    // Turnstile sentinel: "DISABLED" means we deliberately want captcha off
+    // (typical for bring-up while waiting on the Cloudflare keys). Leaving
+    // process.env.TURNSTILE_SECRET_KEY unset makes verify-turnstile.ts skip
+    // verification entirely (with a one-time warning log). Any other value
+    // is treated as a real secret and enforced.
+    const turnstileValue = TIETU_TURNSTILE_SECRET_KEY.value();
+    if (turnstileValue && turnstileValue !== "DISABLED") {
+      process.env.TURNSTILE_SECRET_KEY = turnstileValue;
+    }
     // Cloud Run sits behind two proxy hops (Google Frontend + Cloud Run sidecar).
     process.env.TRUST_PROXY = process.env.TRUST_PROXY ?? "2";
     // CORS allowlist is intentionally left unset: the SPA and this function

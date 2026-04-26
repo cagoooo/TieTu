@@ -33,19 +33,16 @@
   },
   "functions": [
     {
-      "source": "functions",
+      "source": "functions/lib",
       "codebase": "tietu",
       "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",
-        "*.local",
-        "src/**",
-        "build.mjs",
-        "tsconfig.json"
+        "*.local"
       ],
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run build"
+        "npm --prefix \"./functions\" run build"
       ]
     }
   ]

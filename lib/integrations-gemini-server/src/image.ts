@@ -15,15 +15,22 @@ export interface GenerateStickerInput {
  * Default model for sticker sheet generation. Override at runtime via the
  * `GEMINI_IMAGE_MODEL` environment variable.
  *
+ * Verified 2026-04-26 against ListModels — `gemini-2.5-flash-image` is the GA
+ * name (the earlier `-preview` suffix has been retired). Newer alternatives
+ * available the same day:
+ *   - gemini-3.1-flash-image-preview  (newer but preview, may break)
+ *   - gemini-3-pro-image-preview      (slower / pricier, preview)
+ *
  * ⚠️ Google deprecates Gemini models faster than other providers. BEFORE
- *    deploying, verify this model name is still active by running:
+ *    deploying, verify the model is still active by running:
  *
  *      curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" \
  *        | grep -oE '"name":\s*"models/gemini-[^"]*image[^"]*"'
  *
- *    If the result is empty or different, update GEMINI_IMAGE_MODEL accordingly.
+ *    If `gemini-2.5-flash-image` disappears, set `GEMINI_IMAGE_MODEL` to a
+ *    listed replacement.
  */
-const DEFAULT_MODEL = "gemini-2.5-flash-image-preview";
+const DEFAULT_MODEL = "gemini-2.5-flash-image";
 
 function modelName(): string {
   return process.env["GEMINI_IMAGE_MODEL"]?.trim() || DEFAULT_MODEL;

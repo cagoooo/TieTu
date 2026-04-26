@@ -5,8 +5,11 @@
   "targets": {
     "zhuyin-challenge-v3-4cd2b": {
       "hosting": {
-        "tietu": []
+        "tietu": [
+          "tietu"
+        ]
       }
     }
-  }
+  },
+  "etags": {}
 }
