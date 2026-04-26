@@ -9,9 +9,12 @@ import {
   Plus,
   PackageCheck,
   ZoomIn,
+  Eraser,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   splitImageWithGuides,
   downloadZip,
@@ -22,6 +25,7 @@ import {
   getGuideDimensions,
   loadImage,
   isTileAdjustmentDefault,
+  clampMatteTolerance,
   DEFAULT_COLS,
   DEFAULT_ROWS,
   MIN_COLS,
@@ -34,6 +38,9 @@ import {
   LINE_MAIN_SIZE,
   LINE_TAB_W,
   LINE_TAB_H,
+  DEFAULT_MATTE_TOLERANCE,
+  MATTE_TOLERANCE_MIN,
+  MATTE_TOLERANCE_MAX,
   type Guides,
   type TileAdjustment,
   type TileAdjustments,
@@ -113,6 +120,12 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [isZipping, setIsZipping] = useState(false);
   const [isLineExporting, setIsLineExporting] = useState(false);
   const [lineExportOpen, setLineExportOpen] = useState(false);
+  // 一鍵去背:套用到切割預覽 + 下載 ZIP / 整張 PNG。LINE 上架版有自己的
+  // 進階對話框,使用各自的 tolerance(因為每張 LINE tile 規格 370×320,
+  // 不同於這裡的原始切割大小)。
+  const [matteEnabled, setMatteEnabled] = useState(false);
+  const [matteTolerance, setMatteTolerance] = useState(DEFAULT_MATTE_TOLERANCE);
+  const effectiveMatte = matteEnabled ? matteTolerance : 0;
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
   const debounceRef = useRef<number | null>(null);
   const splitVersionRef = useRef(0);
@@ -167,6 +180,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
           guides,
           cachedImageRef.current ?? undefined,
           tileAdjustments,
+          effectiveMatte,
         );
         if (splitVersionRef.current === myVersion) {
           setTiles(result);
@@ -185,7 +199,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         debounceRef.current = null;
       }
     };
-  }, [sheetBase64, guides, tileAdjustments]);
+  }, [sheetBase64, guides, tileAdjustments, effectiveMatte]);
 
   const handleTileAdjustmentChange = useCallback(
     (index: number, next: TileAdjustment) => {
@@ -259,8 +273,15 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         guides,
         cachedImageRef.current ?? undefined,
         tileAdjustments,
+        effectiveMatte,
       );
       await downloadZip(fresh, texts);
+      if (effectiveMatte > 0) {
+        toast({
+          title: "已下載去背版 ZIP",
+          description: `已套用去背強度 ${effectiveMatte},適合直接上傳 LINE 個人原創貼圖。`,
+        });
+      }
     } catch (error) {
       console.error("Zip failed", error);
     } finally {
@@ -468,7 +489,78 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                   </span>
                 )}
               </div>
-              <div className="rounded-2xl bg-[#7F7F7F] p-3">
+
+              {/* 一鍵去背控制:影響預覽 + 下載 ZIP / 整張 PNG */}
+              <div
+                className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4 mb-4"
+                data-testid="matte-controls"
+              >
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="matte-toggle"
+                    className="flex items-center justify-between gap-3 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Eraser className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-bold">一鍵去背(LINE 適用)</span>
+                    </div>
+                    <Switch
+                      id="matte-toggle"
+                      checked={matteEnabled}
+                      onCheckedChange={setMatteEnabled}
+                      data-testid="matte-toggle"
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    開啟後將自動去除每張貼圖的灰色背景,讓下載的 24 張 PNG 直接是透明背景,適合上傳 LINE 個人原創貼圖。
+                  </p>
+                  {matteEnabled && (
+                    <div className="flex items-center gap-3 pt-2">
+                      <span className="text-xs font-medium text-foreground/80 w-12 shrink-0">
+                        強度
+                      </span>
+                      <Slider
+                        min={MATTE_TOLERANCE_MIN}
+                        max={MATTE_TOLERANCE_MAX}
+                        step={1}
+                        value={[matteTolerance]}
+                        onValueChange={(v) =>
+                          setMatteTolerance(clampMatteTolerance(v[0]))
+                        }
+                        className="flex-1"
+                        data-testid="matte-tolerance-slider"
+                      />
+                      <span
+                        className="text-xs tabular-nums w-8 text-right font-bold"
+                        data-testid="matte-tolerance-value"
+                      >
+                        {matteTolerance}
+                      </span>
+                    </div>
+                  )}
+                  {matteEnabled && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
+                      強度越高去得越乾淨,但角色邊緣可能被誤切。建議從預設 {DEFAULT_MATTE_TOLERANCE} 開始試。
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className="rounded-2xl p-3"
+                style={
+                  matteEnabled
+                    ? {
+                        // 透明 checker pattern,讓使用者看清去背效果
+                        backgroundColor: "#ffffff",
+                        backgroundImage:
+                          "linear-gradient(45deg, #d1d5db 25%, transparent 25%), linear-gradient(-45deg, #d1d5db 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d1d5db 75%), linear-gradient(-45deg, transparent 75%, #d1d5db 75%)",
+                        backgroundSize: "16px 16px",
+                        backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
+                      }
+                    : { backgroundColor: "#7F7F7F" }
+                }
+              >
                 <motion.div
                   variants={container}
                   initial="hidden"

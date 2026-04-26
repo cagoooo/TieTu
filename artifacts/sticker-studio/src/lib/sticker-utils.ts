@@ -148,10 +148,19 @@ export async function splitImageWithGuides(
   guides: Guides,
   imgEl?: HTMLImageElement,
   adjustments?: TileAdjustments,
+  /**
+   * If > 0, run removeMatteFromEdges on each tile after rendering. The value
+   * is passed straight through as the flood-fill RGB tolerance against the
+   * MATTE_COLOR (mid-grey #7F7F7F that the prompt forces as the sheet
+   * background). 0 leaves the tile as-is (default — preserves backwards
+   * compatibility with callers that don't know about this parameter).
+   */
+  matteTolerance: number = 0,
 ): Promise<string[]> {
   const img = imgEl ?? (await loadImage(base64));
   const tiles: string[] = [];
   const { cols, rows } = getGuideDimensions(guides);
+  const applyMatte = matteTolerance > 0;
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -162,6 +171,9 @@ export async function splitImageWithGuides(
       const sh = (guides.yCuts[row + 1] - guides.yCuts[row]) * img.height;
 
       const canvas = drawAdjustedTile(img, sx, sy, sw, sh, sw, sh, adjustments?.[idx]);
+      if (applyMatte) {
+        removeMatteFromEdges(canvas, MATTE_COLOR, matteTolerance);
+      }
       tiles.push(canvas.toDataURL("image/png"));
     }
   }
@@ -203,7 +215,7 @@ export function clampMatteTolerance(value: number): number {
   return Math.max(MATTE_TOLERANCE_MIN, Math.min(MATTE_TOLERANCE_MAX, Math.round(value)));
 }
 
-function removeMatteFromEdges(
+export function removeMatteFromEdges(
   canvas: HTMLCanvasElement,
   target: [number, number, number] = MATTE_COLOR,
   tolerance: number = DEFAULT_MATTE_TOLERANCE,

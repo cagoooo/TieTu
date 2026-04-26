@@ -4,14 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
+// PORT only matters for `vite dev` / `vite preview`. `vite build` doesn't
+// listen on a port, so we default rather than throwing — that lets bare
+// `pnpm run build` work without env wrangling.
+const rawPort = process.env.PORT?.trim() || "23937";
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
