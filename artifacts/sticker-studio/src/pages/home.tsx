@@ -116,6 +116,37 @@ export default function Home() {
             return;
           }
 
+          // Classified errors from the api-server — see api-server/src/routes/
+          // stickers.ts (StickerGenerationError mapping). Pick a title +
+          // description per code so the user sees an actionable message
+          // instead of one generic "生成失敗".
+          if (error instanceof ApiError) {
+            const data = error.data as
+              | { error?: string; code?: string }
+              | null;
+            const code = data?.code ?? "";
+            const serverMsg = data?.error;
+
+            const titleByCode: Record<string, string> = {
+              safety_block: "AI 拒絕了這張照片",
+              quota_exhausted: "今天 AI 額度用完了",
+              model_not_found: "AI 模型暫時無法使用",
+              max_tokens: "AI 輸出被截斷",
+              no_image: "AI 沒輸出圖片",
+              network: "AI 服務連線異常",
+            };
+            const title = titleByCode[code];
+            if (title && serverMsg) {
+              toast({
+                title,
+                description: serverMsg,
+                variant: "destructive",
+                duration: 8000, // longer than default — these messages are dense
+              });
+              return;
+            }
+          }
+
           toast({
             title: "生成失敗",
             description: "抱歉，魔法暫時失靈了，請稍後再試！",

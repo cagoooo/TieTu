@@ -3,7 +3,10 @@ import {
   GenerateStickerSheetBody,
   GenerateStickerSheetResponse,
 } from "@workspace/api-zod";
-import { generateStickerSheet } from "@workspace/integrations-gemini-server/image";
+import {
+  generateStickerSheet,
+  StickerGenerationError,
+} from "@workspace/integrations-gemini-server/image";
 import { rewriteTexts } from "@workspace/integrations-gemini-server/text";
 import { logger } from "../lib/logger";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
@@ -229,10 +232,24 @@ router.post(
       });
       res.json(payload);
     } catch (err) {
-      logger.error({ err }, "Sticker generation failed");
+      if (err instanceof StickerGenerationError) {
+        logger.warn(
+          { code: err.code, cause: err.cause, theme, style: styleId },
+          "Sticker generation classified failure",
+        );
+        res.status(err.httpStatus).json({
+          error: err.userMessage,
+          code: err.code,
+        });
+        return;
+      }
+      logger.error({ err }, "Sticker generation failed (unclassified)");
       const message =
         err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
-      res.status(500).json({ error: `貼圖生成失敗：${message}` });
+      res.status(500).json({
+        error: `貼圖生成失敗：${message}`,
+        code: "internal",
+      });
     }
   },
 );
