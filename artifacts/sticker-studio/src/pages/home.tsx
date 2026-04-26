@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2, Github, GraduationCap, ExternalLink } from "lucide-react";
 import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
 import { StickerHistory } from "@/components/sticker-history";
+import { AuthPill } from "@/components/auth-pill";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
@@ -283,12 +284,17 @@ export default function Home() {
 
       <main className="relative z-10 container mx-auto px-4 py-8 md:py-12 min-h-screen flex flex-col items-center">
         
-        <header className="w-full flex justify-center mb-8 md:mb-12">
+        <header className="w-full flex items-center justify-between mb-8 md:mb-12 gap-4">
+          {/* Spacer to keep brand centred when auth pill is wider */}
+          <div className="w-[80px] sm:w-[120px]" aria-hidden="true" />
           <div className="flex items-center gap-2 font-bold text-2xl text-foreground">
             <div className="w-10 h-10 bg-primary text-white rounded-2xl flex items-center justify-center rotate-3 shadow-md">
               <Sparkles className="w-6 h-6" />
             </div>
             <span>貼圖工作室</span>
+          </div>
+          <div className="w-[80px] sm:w-[120px] flex justify-end">
+            <AuthPill />
           </div>
         </header>
 
