@@ -1,14 +1,42 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Heart, Upload, Brain, Wand2, Check } from "lucide-react";
+import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2 } from "lucide-react";
 import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
-import { StickerResult } from "@/components/sticker-result";
 import { StickerHistory } from "@/components/sticker-history";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
 import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-storage";
 import type { StickerStyleId } from "@/lib/sticker-utils";
+
+// Code-split the entire result-screen subtree (sticker-result + cropper +
+// lightbox + tile editor + line export dialog). Upload-only users never
+// download this code. The import promise is also kicked off pre-emptively
+// in handleGenerate(...) so the chunk lands while the AI runs (30–90s),
+// keeping the upload→result transition snappy.
+const StickerResult = lazy(() =>
+  import("@/components/sticker-result").then((m) => ({ default: m.StickerResult })),
+);
+
+function preloadResultChunk(): void {
+  // Best-effort prefetch — failure here is fine, real Suspense path will
+  // re-import on render.
+  void import("@/components/sticker-result").catch(() => undefined);
+}
+
+function ResultLoadingFallback() {
+  return (
+    <div className="w-full flex flex-col items-center justify-center py-20">
+      <div className="relative w-20 h-20 mb-6">
+        <div className="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping" style={{ animationDuration: "2s" }} />
+        <div className="absolute inset-2 bg-primary/10 rounded-full flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        </div>
+      </div>
+      <p className="text-sm text-muted-foreground">正在載入編輯介面…</p>
+    </div>
+  );
+}
 
 type AppState = "upload" | "loading" | "result";
 
@@ -74,6 +102,10 @@ export default function Home() {
   ) => {
     setAppState("loading");
     setCurrentTexts(texts);
+
+    // Race the result-page chunk against the 30–90s Gemini call. By the time
+    // generateMutation resolves the chunk is almost certainly cached.
+    preloadResultChunk();
 
     // Cycle hints
     const hintInterval = setInterval(() => {
@@ -426,6 +458,7 @@ export default function Home() {
             })()}
 
             {appState === "result" && sheetBase64 && (
+              <Suspense fallback={<ResultLoadingFallback />}>
               <motion.div
                 key="result"
                 initial={{ opacity: 0, y: 20 }}
@@ -434,13 +467,14 @@ export default function Home() {
                 transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
                 className="w-full"
               >
-                <StickerResult 
-                  sheetBase64={sheetBase64} 
-                  texts={currentTexts} 
+                <StickerResult
+                  sheetBase64={sheetBase64}
+                  texts={currentTexts}
                   onBack={handleBack}
                   onOpenHistory={handleOpenHistory}
                 />
               </motion.div>
+              </Suspense>
             )}
 
           </AnimatePresence>
