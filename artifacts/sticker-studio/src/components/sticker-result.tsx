@@ -291,8 +291,23 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     }
   };
 
-  const handleDownloadSheet = () => {
-    downloadSheet(sheetBase64);
+  const handleDownloadSheet = async () => {
+    try {
+      await downloadSheet(sheetBase64, effectiveMatte);
+      if (effectiveMatte > 0) {
+        toast({
+          title: "已下載透明背景整張 PNG",
+          description: `已套用去背強度 ${effectiveMatte},整張 4×6 灰底已轉透明。`,
+        });
+      }
+    } catch (error) {
+      console.error("Sheet download failed", error);
+      toast({
+        title: "下載失敗",
+        description: "整張 PNG 去背時發生錯誤,請改用無去背模式或重新整理頁面再試。",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleOpenLineExport = () => {

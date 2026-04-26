@@ -516,13 +516,59 @@ export async function downloadLineStickerZip(pkg: LineExportPackage) {
   saveAs(content, "line-stickers.zip");
 }
 
-export function downloadSheet(base64: string) {
-  const link = document.createElement("a");
-  link.href = toImageDataUrl(base64);
-  link.download = "sticker-sheet.png";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+/**
+ * Downloads the full 4×6 sheet as a single PNG.
+ *
+ * If `matteTolerance > 0`, the saved file is a transparent-background version
+ * — the mid-grey #7F7F7F sheet matte is flood-filled away from every edge,
+ * leaving the 24 chibi figures + their white die-cut frames + label text
+ * floating on transparency. Useful for using the whole sheet as a single
+ * decorative asset without re-cropping.
+ *
+ * Tolerance 0 (default) preserves the original behaviour: download the
+ * untouched base64 from the AI response, no canvas roundtrip.
+ */
+export async function downloadSheet(
+  base64: string,
+  matteTolerance: number = 0,
+): Promise<void> {
+  const filename = `sticker-sheet${matteTolerance > 0 ? "-transparent" : ""}.png`;
+
+  // Fast path: no matte requested → save the original bytes directly.
+  if (matteTolerance <= 0) {
+    const link = document.createElement("a");
+    link.href = toImageDataUrl(base64);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+
+  // Slow path: load → canvas → flood-fill matte → save as blob.
+  const img = await loadImage(base64);
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    // Canvas unsupported (very old browser); fall back to plain download.
+    const link = document.createElement("a");
+    link.href = toImageDataUrl(base64);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+  ctx.drawImage(img, 0, 0);
+  removeMatteFromEdges(canvas, undefined, matteTolerance);
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/png"),
+  );
+  if (!blob) throw new Error("Failed to encode transparent sheet PNG.");
+  saveAs(blob, filename);
 }
 
 export function fileToBase64(file: File): Promise<string> {
