@@ -67,10 +67,13 @@ export async function generateStickerSheet(
     ],
     config: {
       responseModalities: [Modality.IMAGE],
-      // Disable thinking — image generation does not benefit from chain-of-thought
-      // tokens and they would consume the output budget. (See gemini-api-integration
-      // skill, gotcha #9.)
-      thinkingConfig: { thinkingBudget: 0 },
+      // NOTE: do NOT set thinkingConfig on image-output models
+      // (gemini-2.5-flash-image / gemini-3-*-image-*). They reject it with
+      //   400 INVALID_ARGUMENT: Thinking is not enabled for this model.
+      // The gemini-api-integration skill's gotcha #9 (thinking eats output
+      // budget) only applies to text models that have thinking enabled by
+      // default, like gemini-2.5-flash and gemini-2.5-pro.
+      //
       // NOTE on safety: we let Gemini's default thresholds run for now. If user
       // photos start getting rejected with promptFeedback.blockReason === "SAFETY",
       // import HarmCategory + HarmBlockThreshold from "@google/genai" and add

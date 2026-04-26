@@ -11,6 +11,10 @@ concurrency:
   group: firebase-tietu-deploy
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  id-token: write    # reserved for future Workload Identity Federation upgrade
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -38,21 +42,37 @@ jobs:
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
         run: pnpm --filter @workspace/sticker-studio run build
 
-      - name: Build functions
+      - name: Build Cloud Functions bundle
         run: pnpm --filter tietu-functions run build
+
+      # Authenticate via the github-actions-tietu service account (its JSON
+      # key is stored in the FIREBASE_SERVICE_ACCOUNT secret). The SA has
+      # firebasehosting.admin + cloudfunctions.admin + run.admin +
+      # iam.serviceAccountUser + cloudbuild.builds.editor +
+      # artifactregistry.writer + secretmanager.secretAccessor — i.e. the
+      # standard set required to deploy a Firebase Hosting site and a
+      # Cloud Functions v2 codebase.
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
 
       # ⚠️ The deploy command is ALWAYS scoped with `--only` flags so we never
       # touch other Firebase projects' resources. We restrict to:
       #   - hosting:tietu       (only the "tietu" hosting target)
       #   - functions:tietu     (only the "tietu" codebase declared in firebase.json)
-      # This guards against accidentally deleting other apps' Cloud Functions.
+      # This guards against accidentally deleting other apps' Cloud Functions
+      # (notably: the existing Zhuyin app in this same Firebase project).
       - name: Deploy to Firebase
-        uses: w9jds/firebase-action@v14.10.1
-        with:
-          args: deploy --only "hosting:tietu,functions:tietu" --project ${{ secrets.FIREBASE_PROJECT_ID }} --force
+        run: |
+          npx --yes firebase-tools@15 deploy \
+            --only "hosting:tietu,functions:tietu" \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --force \
+            --non-interactive
         env:
-          # --force here only suppresses CI prompts. The --only "hosting:tietu,functions:tietu"
-          # scope keeps the deploy fenced to the TieTu codebase only — Cloud
-          # Functions belonging to other apps in the same Firebase project
-          # (e.g. zhuyin-challenge-v3) are NEVER candidates for deletion.
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
