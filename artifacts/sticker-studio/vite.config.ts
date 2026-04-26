@@ -55,40 +55,29 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    // Raise the 500 KB warning ceiling — the merged vendor chunk (radix +
-    // framer-motion) sits around 200 KB on its own and we'd rather log
-    // sizes than chase the warning into noise.
-    chunkSizeWarningLimit: 600,
+    // Raise the warning ceiling — the merged vendor chunk hovers around
+    // 600 KB on its own and we'd rather log sizes than chase the warning.
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
-        // Split heavy npm vendors into named chunks so the browser can fetch
-        // them in parallel under HTTP/2 and only re-download the ones whose
-        // versions actually change. Buckets are picked by frequency-of-use
-        // and "ships together" cohesion (e.g. all Radix primitives change
-        // in lockstep so they share one chunk).
+        // Split ONLY non-React, leaf-level libraries into separate chunks.
+        //
+        // Why so conservative: aggressively splitting React-based libraries
+        // (Radix, framer-motion, etc.) into their own chunks broke the live
+        // site with `Cannot read properties of undefined (reading 'useLayoutEffect')`
+        // — a separate `vendor-radix` chunk evaluated before `vendor-react`
+        // had populated its named exports, leaving Radix's React.* references
+        // pointing at undefined slots. Anything that imports React stays in
+        // the default app chunk so module graph + evaluation order match.
+        //
+        // The libraries below are pure JS / DOM utilities that don't reach
+        // back into React internals, so they're safe to ship in their own
+        // long-lived chunks (jszip in particular is 99 KB / 31 KB gzip and
+        // only loaded when the user hits "下載 ZIP").
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
-          if (id.includes("react-dom") || /[\\/]react[\\/]/.test(id) || id.includes("scheduler")) {
-            return "vendor-react";
-          }
-          if (id.includes("framer-motion")) return "vendor-motion";
-          if (id.includes("@radix-ui")) return "vendor-radix";
-          if (id.includes("@tanstack")) return "vendor-query";
-          if (
-            id.includes("react-hook-form") ||
-            id.includes("@hookform") ||
-            id.includes("/zod/")
-          ) {
-            return "vendor-forms";
-          }
           if (id.includes("jszip") || id.includes("file-saver")) return "vendor-io";
           if (id.includes("lucide-react")) return "vendor-icons";
-          if (id.includes("react-day-picker") || id.includes("date-fns")) return "vendor-datepicker";
-          if (id.includes("embla-carousel")) return "vendor-carousel";
-          if (id.includes("recharts") || id.includes("/d3-")) return "vendor-charts";
-          if (id.includes("cmdk") || id.includes("sonner") || id.includes("vaul") || id.includes("input-otp")) {
-            return "vendor-ui-extra";
-          }
           return undefined;
         },
       },
