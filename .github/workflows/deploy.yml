@@ -33,7 +33,8 @@ jobs:
       - name: Build SPA
         env:
           PORT: 23937
-          BASE_PATH: /
+          # BASE_PATH defaults to "/" in vite.config.ts. Override only when
+          # deploying under a sub-path (e.g. GitHub Pages with default URL).
           VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
         run: pnpm --filter @workspace/sticker-studio run build
 

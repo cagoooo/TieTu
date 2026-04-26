@@ -30,7 +30,6 @@ jobs:
       - name: Build SPA (smoke)
         env:
           PORT: 23937
-          BASE_PATH: /
         run: pnpm --filter @workspace/sticker-studio run build
 
       - name: Build functions (smoke)

@@ -18,13 +18,15 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+// Default to "/" (root deploy on Firebase Hosting / GitHub Pages with custom
+// domain). Override BASE_PATH only when deploying under a sub-path, e.g.
+// "/tietu-sticker/" for the default GitHub Pages URL pattern.
+//
+// IMPORTANT: do NOT pass `BASE_PATH=/` from a Git Bash on Windows shell —
+// MSYS path conversion will rewrite the literal "/" into "/Program Files/Git/"
+// before the Node child sees it, producing broken script src in index.html.
+// The default below avoids that footgun entirely.
+const basePath = process.env.BASE_PATH?.trim() || "/";
 
 export default defineConfig({
   base: basePath,
