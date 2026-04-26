@@ -8,6 +8,7 @@ import {
   StickerGenerationError,
 } from "@workspace/integrations-gemini-server/image";
 import { rewriteTexts } from "@workspace/integrations-gemini-server/text";
+import { verifyTexts } from "@workspace/integrations-gemini-server/verify";
 import { logger } from "../lib/logger";
 import { tryUploadSheetPng } from "../lib/storage";
 import { attachFirebaseUser, getRequestUser } from "../lib/auth-middleware";
@@ -325,5 +326,90 @@ router.post("/stickers/rewrite-texts", verifyTurnstile(), attachFirebaseUser(), 
     res.status(500).json({ error: `主題改寫失敗：${message}` });
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/stickers/verify-text
+// Reads back the rendered labels from a generated sheet using Gemini Vision
+// (gemini-2.5-flash with image input). Replaces the deprecated client-side
+// Tesseract.js + chi_tra pipeline (lib/sticker-ocr.ts), which had a 67%
+// false-positive rate against the cartoon characters in each cell and could
+// not read the English fragments ("Hi", "YA"). Hand-rolled validation, no
+// zod dep here.
+// ---------------------------------------------------------------------------
+
+interface VerifyTextRequest {
+  /** Full sheet PNG, optionally as a data URL. */
+  sheetBase64?: unknown;
+  /** Expected labels in row-major order. Used to compute average similarity
+   *  and as a hint to the model about what's most likely printed. */
+  expectedTexts?: unknown;
+}
+
+router.post(
+  "/stickers/verify-text",
+  verifyTurnstile(),
+  attachFirebaseUser(),
+  async (req, res) => {
+    const body = (req.body ?? {}) as VerifyTextRequest;
+
+    const sheetBase64Raw = typeof body.sheetBase64 === "string" ? body.sheetBase64 : "";
+    if (!sheetBase64Raw) {
+      res.status(400).json({ error: "請求格式錯誤：sheetBase64 不可為空。" });
+      return;
+    }
+
+    const expectedRaw = Array.isArray(body.expectedTexts) ? body.expectedTexts : null;
+    if (!expectedRaw || expectedRaw.length !== 24) {
+      res.status(400).json({
+        error: "請求格式錯誤：expectedTexts 必須剛好 24 個元素。",
+      });
+      return;
+    }
+    const expectedTexts: string[] = expectedRaw.map((v) =>
+      typeof v === "string" ? v : String(v ?? ""),
+    );
+
+    let decoded: DecodedImage;
+    try {
+      decoded = decodePhoto(sheetBase64Raw);
+    } catch (err) {
+      res.status(400).json({
+        error: `貼圖解析失敗：${err instanceof Error ? err.message : String(err)}`,
+      });
+      return;
+    }
+
+    try {
+      const authedUser = getRequestUser(req);
+      logger.info(
+        {
+          uid: authedUser?.uid ?? null,
+          email: authedUser?.email ?? null,
+          mime: decoded.mimeType,
+          bytes: decoded.buffer.length,
+        },
+        "[stickers] verify-text request",
+      );
+
+      const { recognizedTexts, averageSimilarity } = await verifyTexts(
+        {
+          sheetBuffer: decoded.buffer,
+          sheetMimeType: decoded.mimeType,
+          expectedCount: 24,
+        },
+        expectedTexts,
+      );
+
+      res.json({ recognizedTexts, averageSimilarity });
+    } catch (err) {
+      logger.error({ err }, "Verify-text failed");
+      const message =
+        err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
+      // 5xx so the SPA can suggest "稍後再試". The verify feature is opt-in
+      // (a button click), so failing here doesn't block the main flow.
+      res.status(502).json({ error: `文字辨識失敗：${message}` });
+    }
+  },
+);
 
 export default router;

@@ -15,7 +15,7 @@ import {
   ScanText,
   AlertTriangle,
 } from "lucide-react";
-import type { OcrVerificationResult } from "@/lib/sticker-ocr";
+import { customFetch, ApiError } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -63,6 +63,40 @@ interface StickerResultProps {
   texts: string[];
   onBack: () => void;
   onOpenHistory: (entry: HistoryEntry) => void;
+}
+
+// Local types for the AI 文字準確度檢查 result. Mirrors the shape the deprecated
+// lib/sticker-ocr.ts module used to export, so the rendering code below didn't
+// need to change. Server now does the actual recognition (Gemini Vision); the
+// client computes the per-cell mismatch list against `texts`.
+interface OcrMismatch {
+  index: number;
+  expected: string;
+  recognized: string;
+  similarity: number;
+}
+interface OcrVerificationResult {
+  mismatches: OcrMismatch[];
+  totalChecked: number;
+  averageSimilarity: number;
+  recognizedByIndex: Record<number, string>;
+}
+
+const VERIFY_SIMILARITY_THRESHOLD = 0.5;
+
+/** Same Jaccard-on-character-set the server uses, so the client and server
+ *  agree on what counts as a "mismatch" without an extra round-trip. */
+function characterSimilarity(a: string, b: string): number {
+  const norm = (s: string) => s.replace(/[\s\p{P}]/gu, "");
+  const aN = norm(a);
+  const bN = norm(b);
+  if (aN.length === 0 && bN.length === 0) return 1;
+  if (aN.length === 0 || bN.length === 0) return 0;
+  const aSet = new Set(aN.split(""));
+  const bSet = new Set(bN.split(""));
+  const intersection = [...aSet].filter((c) => bSet.has(c)).length;
+  const union = new Set([...aSet, ...bSet]).size;
+  return union === 0 ? 0 : intersection / union;
 }
 
 interface StepperProps {
@@ -132,10 +166,12 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [matteTolerance, setMatteTolerance] = useState(DEFAULT_MATTE_TOLERANCE);
   const effectiveMatte = matteEnabled ? matteTolerance : 0;
 
-  // 文字準確度檢查(opt-in):tesseract.js + chi_tra language pack 是 lazy
-  // chunk(~8 MB),只在使用者主動點按鈕時才下載。詳見 lib/sticker-ocr.ts。
+  // 文字準確度檢查(opt-in):送整張 sheet 到 /api/stickers/verify-text,後端用
+  // gemini-2.5-flash 多模態一次讀回 24 格。取代了原本 lazy-loaded 的
+  // tesseract.js + chi_tra(8 MB 語言包),因為對藝術字辨識率太低(67% 誤判),
+  // 而且 chi_tra 不支援英文(Hi / YA → 空白)。Gemini Vision 的 free tier 大,
+  // 一次驗證 = 1 次 gemini-2.5-flash 呼叫,在 1500 RPD 內不會收費。
   const [ocrState, setOcrState] = useState<"idle" | "loading" | "done">("idle");
-  const [ocrProgress, setOcrProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const [ocrResult, setOcrResult] = useState<OcrVerificationResult | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
@@ -302,10 +338,10 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   };
 
   const handleVerifyOcr = async () => {
-    if (tiles.length === 0) {
+    if (!sheetBase64) {
       toast({
-        title: "尚未完成切片",
-        description: "請等切割預覽載入後再試。",
+        title: "尚未載入貼圖",
+        description: "請等預覽載入後再試。",
         variant: "destructive",
       });
       return;
@@ -313,22 +349,49 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     setOcrState("loading");
     setOcrError(null);
     setOcrResult(null);
-    setOcrProgress({ done: 0, total: 0 });
     try {
-      // Dynamic import to keep tesseract.js out of the upload-stage bundle.
-      const { verifyTilesOcr } = await import("@/lib/sticker-ocr");
-      const result = await verifyTilesOcr(tiles, texts, {
-        sampleSize: Math.min(tiles.length, 12),
-        similarityThreshold: 0.5,
-        onProgress: (done, total) => setOcrProgress({ done, total }),
+      // Strip the data URL prefix (`data:image/png;base64,`) before sending —
+      // the server's decodePhoto() also accepts data URLs but raw base64 is
+      // smaller on the wire.
+      const commaIdx = sheetBase64.indexOf(",");
+      const sheetPayload = commaIdx >= 0 ? sheetBase64.slice(commaIdx + 1) : sheetBase64;
+
+      const { recognizedTexts, averageSimilarity } = await customFetch<{
+        recognizedTexts: string[];
+        averageSimilarity: number;
+      }>("/api/stickers/verify-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheetBase64: sheetPayload, expectedTexts: texts }),
       });
+
+      const totalChecked = Math.min(recognizedTexts.length, texts.length);
+      const recognizedByIndex: Record<number, string> = {};
+      const mismatches: OcrMismatch[] = [];
+      for (let i = 0; i < totalChecked; i++) {
+        const expected = texts[i] ?? "";
+        const recognized = recognizedTexts[i] ?? "";
+        recognizedByIndex[i] = recognized;
+        const sim = characterSimilarity(expected, recognized);
+        if (sim < VERIFY_SIMILARITY_THRESHOLD) {
+          mismatches.push({ index: i, expected, recognized, similarity: sim });
+        }
+      }
+
+      const result: OcrVerificationResult = {
+        mismatches,
+        totalChecked,
+        averageSimilarity,
+        recognizedByIndex,
+      };
       setOcrResult(result);
       setOcrState("done");
+
       const matchPct = Math.round(result.averageSimilarity * 100);
       if (result.mismatches.length === 0) {
         toast({
           title: "文字辨識準確 ✅",
-          description: `抽樣 ${result.totalChecked} 張,平均相似度 ${matchPct}%。可放心下載。`,
+          description: `檢查 ${result.totalChecked} 張,平均相似度 ${matchPct}%。可放心下載。`,
         });
       } else {
         toast({
@@ -339,14 +402,18 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
         });
       }
     } catch (error) {
-      console.error("OCR verification failed", error);
+      console.error("Verify-text failed", error);
       const message =
-        error instanceof Error ? error.message : "OCR 模型載入或執行失敗。";
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "AI 文字辨識失敗。";
       setOcrError(message);
       setOcrState("idle");
       toast({
-        title: "OCR 驗證失敗",
-        description: `${message}(若是首次執行,請確認網路通暢能下載 8 MB 的 chi_tra 模型)。`,
+        title: "AI 文字辨識失敗",
+        description: `${message}(請稍後再試,或確認網路是否暢通。)`,
         variant: "destructive",
       });
     }
@@ -651,7 +718,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                 </div>
               </div>
 
-              {/* 文字準確度檢查 (P3-6, opt-in OCR via tesseract.js) */}
+              {/* 文字準確度檢查 (Gemini Vision multimodal verification) */}
               <div
                 className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4 mb-4"
                 data-testid="ocr-controls"
@@ -660,22 +727,20 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
                       <ScanText className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-bold">文字準確度檢查</span>
+                      <span className="text-sm font-bold">AI 文字準確度檢查</span>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleVerifyOcr}
-                      disabled={ocrState === "loading" || tiles.length === 0}
+                      disabled={ocrState === "loading" || !sheetBase64}
                       className="rounded-full text-xs h-8"
                       data-testid="ocr-verify-button"
                     >
                       {ocrState === "loading" ? (
                         <>
                           <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                          {ocrProgress.total > 0
-                            ? `辨識中 ${ocrProgress.done}/${ocrProgress.total}`
-                            : "載入 OCR 模型..."}
+                          AI 辨識中...
                         </>
                       ) : ocrResult ? (
                         <>
@@ -691,7 +756,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    AI 偶爾會把中文寫成形似的錯字。點上方按鈕會抽樣 12 張用 OCR 比對,告訴你哪幾格可能寫錯了。首次執行需下載 8 MB 中文模型,請保持網路通暢。
+                    AI 偶爾會把中文寫成形似的錯字。點上方按鈕會用 Gemini Vision 一次讀完整張 24 格,告訴你哪幾格可能寫錯了。中英文混合(Hi、YA)都能辨識。
                   </p>
                   {ocrError && (
                     <p className="text-[11px] text-destructive font-medium leading-relaxed pt-1">
@@ -706,7 +771,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                             <CheckCircle2 className="w-4 h-4 text-[#06C755]" />
                             <span className="font-bold text-foreground">全部正確!</span>
                             <span className="text-muted-foreground">
-                              抽樣 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%。
+                              檢查 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%。
                             </span>
                           </>
                         ) : (
@@ -716,7 +781,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                               {ocrResult.mismatches.length} 處可能寫錯
                             </span>
                             <span className="text-muted-foreground">
-                              (抽樣 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%)
+                              (檢查 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%)
                             </span>
                           </>
                         )}
@@ -733,7 +798,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                               </span>
                               <span>
                                 期待<strong>「{m.expected}」</strong>
-                                ,但 OCR 辨識為
+                                ,但 AI 看到
                                 <strong className="text-amber-700">「{m.recognized || "(空白)"}」</strong>
                                 <span className="text-muted-foreground ml-1">
                                   ({Math.round(m.similarity * 100)}% 相符)
@@ -745,7 +810,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                       )}
                       {ocrResult.mismatches.length > 0 && (
                         <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
-                          建議:點「再做一組」回上頁,把錯誤的格子文字稍微改寫(如加標點、換同義詞),再重新生成。OCR 也有少量誤判,以肉眼確認為準。
+                          建議:點「再做一組」回上頁,把錯誤的格子文字稍微改寫(如加標點、換同義詞),再重新生成。
                         </p>
                       )}
                     </div>
