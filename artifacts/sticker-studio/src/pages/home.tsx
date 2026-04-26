@@ -65,10 +65,15 @@ export default function Home() {
             title: "生成成功！🎉",
             description: "你的專屬 3D Q版貼圖已經準備好囉！",
           });
+          // imageUrl is added by api-server when GCS upload succeeds
+          // (P2-2). The auto-generated zod schema doesn't yet know about
+          // it — read defensively via cast.
+          const imageUrl = (data as { imageUrl?: string }).imageUrl;
           addHistoryEntry({
             theme,
             texts,
             sheetBase64: data.imageBase64,
+            imageUrl,
           }).catch((err) =>
             console.error("[home] Failed to add history", err),
           );
@@ -162,8 +167,41 @@ export default function Home() {
     setSheetBase64(null);
   };
 
-  const handleOpenHistory = (entry: HistoryEntry) => {
-    setSheetBase64(entry.sheetBase64);
+  const handleOpenHistory = async (entry: HistoryEntry) => {
+    // Prefer the GCS URL when present (P2-2): the IndexedDB entry doesn't
+    // carry the full sheet bytes, only the thumbnail + this URL. We fetch
+    // the original PNG and turn it into a data URL so sticker-result's
+    // loadImage() works the same as for fresh generations.
+    let sheet = entry.sheetBase64;
+    if (entry.imageUrl) {
+      try {
+        const response = await fetch(entry.imageUrl, {
+          mode: "cors",
+          cache: "force-cache",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        sheet = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        console.error("[home] Failed to fetch history sheet from GCS", err);
+        if (!entry.sheetBase64) {
+          // No URL fetch + no local copy → can't recover; tell the user.
+          toast({
+            title: "歷史貼圖已過期",
+            description: "雲端儲存最多保留 7 天,這份貼圖已被自動清除。請重新生成一組。",
+            variant: "destructive",
+          });
+          return;
+        }
+        // Else fall through and use the local sheetBase64 fallback.
+      }
+    }
+    setSheetBase64(sheet);
     setCurrentTexts(entry.texts);
     setAppState("result");
     if (typeof window !== "undefined") {

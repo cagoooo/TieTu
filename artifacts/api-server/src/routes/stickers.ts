@@ -9,6 +9,7 @@ import {
 } from "@workspace/integrations-gemini-server/image";
 import { rewriteTexts } from "@workspace/integrations-gemini-server/text";
 import { logger } from "../lib/logger";
+import { tryUploadSheetPng } from "../lib/storage";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
 
 // Per-IP rate limiting was removed in deployment plan A: this is a private /
@@ -226,11 +227,20 @@ router.post(
         prompt,
       });
 
-      const payload = GenerateStickerSheetResponse.parse({
+      // Best-effort: upload to GCS in parallel so the SPA can store a URL
+      // in IndexedDB history instead of multi-MB base64 strings (P2-2).
+      // Falls back silently to base64-only when STORAGE_BUCKET isn't set
+      // (local dev) or upload fails for any reason.
+      const imageUrl = await tryUploadSheetPng(sheetBuffer);
+
+      const parsedPayload = GenerateStickerSheetResponse.parse({
         imageBase64: sheetBuffer.toString("base64"),
         mimeType: "image/png",
       });
-      res.json(payload);
+      // Tack imageUrl onto the response. The SPA reads it via a cast in
+      // home.tsx (the auto-generated zod schema doesn't yet know about
+      // it; deliberately not running orval codegen for one optional field).
+      res.json(imageUrl ? { ...parsedPayload, imageUrl } : parsedPayload);
     } catch (err) {
       if (err instanceof StickerGenerationError) {
         logger.warn(

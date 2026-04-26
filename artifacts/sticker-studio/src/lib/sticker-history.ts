@@ -20,8 +20,21 @@ export interface HistoryEntry {
   createdAt: number;
   theme: string | null;
   texts: string[];
+  /**
+   * Compressed JPEG of the sheet (~100–300 KB) embedded as a data URL.
+   * Empty string when {@link imageUrl} is present — that means the full
+   * sheet lives in GCS and we re-download on demand to save IndexedDB space.
+   */
   sheetBase64: string;
   thumbnailDataUrl: string;
+  /**
+   * Optional public CDN URL of the original sheet PNG (multi-MB).
+   * When present, the entry skips storing the compressed JPEG and
+   * sticker-result re-fetches this URL on history reopen.
+   * URL expires after 7 days (bucket lifecycle); reopens after that
+   * fall back to a "請重新生成" toast in home.tsx.
+   */
+  imageUrl?: string;
 }
 
 export type HistoryStorageNoticeKind = "evicted" | "quota-exceeded" | "save-failed";
@@ -239,9 +252,18 @@ export async function addHistoryEntry(
   }
   let entry: HistoryEntry;
   try {
-    const compressedSheet = await compressSheetForStorage(input.sheetBase64);
+    // When the api-server included a public GCS URL we skip storing the
+    // multi-MB JPEG copy in IndexedDB — the URL is < 100 bytes and the
+    // bucket has a 7-day lifecycle so the data eventually self-deletes.
+    // The thumbnail is *always* stored (it's only ~50 KB) so the history
+    // panel can render instantly without a network request.
+    const useRemote = typeof input.imageUrl === "string" && input.imageUrl.length > 0;
+    const compressedSheet = useRemote
+      ? ""
+      : await compressSheetForStorage(input.sheetBase64);
     const thumbnailDataUrl =
-      input.thumbnailDataUrl ?? (await makeThumbnail(compressedSheet));
+      input.thumbnailDataUrl ??
+      (await makeThumbnail(useRemote ? input.sheetBase64 : compressedSheet));
     entry = {
       id: generateId(),
       createdAt: Date.now(),
@@ -249,6 +271,7 @@ export async function addHistoryEntry(
       texts: input.texts,
       sheetBase64: compressedSheet,
       thumbnailDataUrl,
+      ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
     };
   } catch (error) {
     console.error(

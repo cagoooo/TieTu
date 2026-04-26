@@ -75,6 +75,11 @@ async function getApp(): Promise<RequestHandler> {
     }
     // Cloud Run sits behind two proxy hops (Google Frontend + Cloud Run sidecar).
     process.env.TRUST_PROXY = process.env.TRUST_PROXY ?? "2";
+    // Hand-off bucket name to api-server's storage helper. The default GCS
+    // bucket "tietu-sheets-cagoooo" lives in the same project, has 7-day
+    // lifecycle delete, allUsers:objectViewer, and the Cloud Functions
+    // runtime SA has storage.objectAdmin on it — no extra creds needed.
+    process.env.STORAGE_BUCKET = process.env.STORAGE_BUCKET ?? "tietu-sheets-cagoooo";
     // CORS allowlist:
     //   - https://tietu.web.app           — Firebase Hosting (same-origin via
     //                                         rewrites; included for safety)
