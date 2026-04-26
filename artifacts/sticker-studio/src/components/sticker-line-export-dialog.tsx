@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, PackageCheck, Check, RotateCcw, Eraser } from "lucide-react";
+import {
+  Loader2,
+  PackageCheck,
+  Check,
+  RotateCcw,
+  Eraser,
+  CheckCircle2,
+  ExternalLink,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -351,6 +359,31 @@ export function StickerLineExportDialog({
           </section>
 
           {previewBox}
+
+          <section
+            className="rounded-2xl border border-[#06C755]/30 bg-[#06C755]/5 p-4"
+            data-testid="line-upload-hint-dialog"
+          >
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-[#06C755] shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-2">
+                <h4 className="font-bold text-sm text-foreground">下載完成後如何上架？</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  ZIP 內已備齊 24 張貼圖、主圖、分頁圖與 README。前往 LINE Creators Market、登入後選「個人原創貼圖」、上傳此壓縮檔即可送審。
+                </p>
+                <a
+                  href="https://creator.line.me/zh-hant/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-bold text-[#06C755] hover:text-[#05B14C] transition-colors"
+                  data-testid="line-creator-link-dialog"
+                >
+                  前往 LINE 個人原創市集
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </section>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">

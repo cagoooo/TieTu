@@ -10,6 +10,8 @@ import {
   PackageCheck,
   ZoomIn,
   Eraser,
+  CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -409,11 +411,38 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
           </Button>
         </div>
       </div>
-      {!isLineEligible && (
+      {!isLineEligible ? (
         <div className="-mt-4 mb-6 text-center">
           <p className="text-xs text-muted-foreground" data-testid="line-eligibility-note">
             想輸出 LINE 上架版？請將切割數量調整為剛好 {LINE_STICKER_COUNT} 張（目前為 {tileCount} 張）。
           </p>
+        </div>
+      ) : (
+        <div className="-mt-4 mb-6 flex justify-center">
+          <div
+            className="max-w-md w-full rounded-2xl border border-[#06C755]/30 bg-[#06C755]/5 p-4"
+            data-testid="line-upload-hint"
+          >
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-[#06C755] shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-2">
+                <h4 className="font-bold text-sm text-foreground">如何上架？</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  下載 LINE 上架版 ZIP 後，直接前往 LINE Creators Market 上傳壓縮檔即可申請。
+                </p>
+                <a
+                  href="https://creator.line.me/zh-hant/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-bold text-[#06C755] hover:text-[#05B14C] transition-colors"
+                  data-testid="line-creator-link"
+                >
+                  前往 LINE 個人原創市集
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
