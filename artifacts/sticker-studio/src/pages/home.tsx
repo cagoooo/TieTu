@@ -61,6 +61,12 @@ export default function Home() {
   const [appState, setAppState] = useState<AppState>("upload");
   const [sheetBase64, setSheetBase64] = useState<string | null>(null);
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
+  // N3: keep the metadata around so the result page's "分享" button knows the
+  // theme + style + Cloud Storage URL of the current sheet without us having
+  // to thread it through the API response again on the share request.
+  const [currentTheme, setCurrentTheme] = useState<string | null>(null);
+  const [currentStyleId, setCurrentStyleId] = useState<StickerStyleId>("pop-mart-3d");
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [loadingHints, setLoadingHints] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
   const loadingStartRef = useRef<number | null>(null);
@@ -106,6 +112,9 @@ export default function Home() {
   ) => {
     setAppState("loading");
     setCurrentTexts(texts);
+    setCurrentTheme(theme);
+    setCurrentStyleId(style);
+    setCurrentImageUrl(null); // reset until /generate returns the GCS URL
 
     // Race the result-page chunk against the 30–90s Gemini call. By the time
     // generateMutation resolves the chunk is almost certainly cached.
@@ -137,6 +146,7 @@ export default function Home() {
           // (P2-2). The auto-generated zod schema doesn't yet know about
           // it — read defensively via cast.
           const imageUrl = (data as { imageUrl?: string }).imageUrl;
+          setCurrentImageUrl(imageUrl ?? null);
           addHistoryEntry(
             {
               theme,
@@ -274,6 +284,9 @@ export default function Home() {
     }
     setSheetBase64(sheet);
     setCurrentTexts(entry.texts);
+    setCurrentTheme(entry.theme ?? null);
+    setCurrentStyleId(((entry as { styleId?: StickerStyleId }).styleId ?? "pop-mart-3d") as StickerStyleId);
+    setCurrentImageUrl(entry.imageUrl ?? null);
     setAppState("result");
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -482,6 +495,9 @@ export default function Home() {
                 <StickerResult
                   sheetBase64={sheetBase64}
                   texts={currentTexts}
+                  theme={currentTheme}
+                  styleId={currentStyleId}
+                  imageUrl={currentImageUrl}
                   onBack={handleBack}
                   onOpenHistory={handleOpenHistory}
                 />

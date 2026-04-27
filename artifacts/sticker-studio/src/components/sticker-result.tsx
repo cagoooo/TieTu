@@ -14,6 +14,9 @@ import {
   ExternalLink,
   ScanText,
   AlertTriangle,
+  Share2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { customFetch, ApiError } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -54,6 +57,14 @@ import { StickerCropper } from "./sticker-cropper";
 import { StickerHistory } from "./sticker-history";
 import { StickerLightbox } from "./sticker-lightbox";
 import { StickerLineExportDialog } from "./sticker-line-export-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useAuth } from "@/hooks/use-auth";
 import { StickerTileEditor, type TileSourceRect } from "./sticker-tile-editor";
 import { useToast } from "@/hooks/use-toast";
 import type { HistoryEntry } from "@/lib/sticker-history";
@@ -61,6 +72,16 @@ import type { HistoryEntry } from "@/lib/sticker-history";
 interface StickerResultProps {
   sheetBase64: string;
   texts: string[];
+  /** Theme used to generate this sheet — passed to /api/stickers/share so the
+   *  public share page can show "主題:XX" alongside the image. */
+  theme?: string | null;
+  /** Style id used to generate this sheet (pop-mart-3d / clay / pixel /
+   *  anime-2d / watercolor). */
+  styleId?: string;
+  /** Cloud Storage public URL of the rendered sheet (P2-2). When null the
+   *  share button is disabled — the share entry needs a permanent URL, not
+   *  the in-memory base64. */
+  imageUrl?: string | null;
   onBack: () => void;
   onOpenHistory: (entry: HistoryEntry) => void;
 }
@@ -146,7 +167,15 @@ function Stepper({ label, value, min, max, onChange, testIdPrefix }: StepperProp
   );
 }
 
-export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: StickerResultProps) {
+export function StickerResult({
+  sheetBase64,
+  texts,
+  theme,
+  styleId,
+  imageUrl,
+  onBack,
+  onOpenHistory,
+}: StickerResultProps) {
   const [cols, setCols] = useState<number>(DEFAULT_COLS);
   const [rows, setRows] = useState<number>(DEFAULT_ROWS);
   const [guides, setGuides] = useState<Guides>(() => getDefaultGuides(DEFAULT_COLS, DEFAULT_ROWS));
@@ -174,6 +203,10 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
   const [ocrState, setOcrState] = useState<"idle" | "loading" | "done">("idle");
   const [ocrResult, setOcrResult] = useState<OcrVerificationResult | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  // Tracks whether the auto-verify on first sheet load has fired. The user
+  // can still click 重新檢查 manually (clears this so a follow-up auto-fire
+  // would be possible if sheetBase64 changed, e.g. they go back and regen).
+  const autoVerifiedKeyRef = useRef<string | null>(null);
   const cachedImageRef = useRef<HTMLImageElement | null>(null);
   const debounceRef = useRef<number | null>(null);
   const splitVersionRef = useRef(0);
@@ -337,7 +370,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
     }
   };
 
-  const handleVerifyOcr = async () => {
+  const handleVerifyOcr = useCallback(async (opts?: { silentSuccess?: boolean }) => {
     if (!sheetBase64) {
       toast({
         title: "尚未載入貼圖",
@@ -389,11 +422,18 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
 
       const matchPct = Math.round(result.averageSimilarity * 100);
       if (result.mismatches.length === 0) {
-        toast({
-          title: "文字辨識準確 ✅",
-          description: `檢查 ${result.totalChecked} 張,平均相似度 ${matchPct}%。可放心下載。`,
-        });
+        // Auto-runs suppress the "all-clear" toast — surprise positive toasts
+        // when the user didn't ask for it feel noisy. Manual button still
+        // fires the toast so re-checking has visible feedback.
+        if (!opts?.silentSuccess) {
+          toast({
+            title: "文字辨識準確 ✅",
+            description: `檢查 ${result.totalChecked} 張,平均相似度 ${matchPct}%。可放心下載。`,
+          });
+        }
       } else {
+        // Mismatch toasts always fire — this is the whole point of auto-verify:
+        // proactively warn the user before they download a sheet with errors.
         toast({
           title: `偵測到 ${result.mismatches.length} 處可能錯字`,
           description: `平均相似度 ${matchPct}%。請查看下方清單,可手動修文字後重新生成。`,
@@ -411,13 +451,130 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
             : "AI 文字辨識失敗。";
       setOcrError(message);
       setOcrState("idle");
+      // Auto-runs swallow error toasts — the verify panel still shows the
+      // error inline, and we don't want to hijack the user's first-glance UX
+      // with "驗證失敗" before they've even seen the sticker. They can hit
+      // the manual button to retry.
+      if (!opts?.silentSuccess) {
+        toast({
+          title: "AI 文字辨識失敗",
+          description: `${message}(請稍後再試,或確認網路是否暢通。)`,
+          variant: "destructive",
+        });
+      }
+    }
+  }, [sheetBase64, texts, toast]);
+
+  // N2 — auto-verify on first load. Runs once per distinct sheetBase64 (so
+  // navigating back, regenerating, then returning re-fires; opening the same
+  // sheet from history doesn't re-fire if we already verified it). Manual
+  // 重新檢查 button stays available either way.
+  useEffect(() => {
+    if (!sheetBase64) return;
+    if (autoVerifiedKeyRef.current === sheetBase64) return;
+    autoVerifiedKeyRef.current = sheetBase64;
+    // Tiny defer so the result page's main render happens first — the user
+    // should see their sticker before we kick off a 3-second background API.
+    const timer = window.setTimeout(() => {
+      void handleVerifyOcr({ silentSuccess: true });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [sheetBase64, handleVerifyOcr]);
+
+  // ---------------- N3 — Sharing ----------------
+  // Auth check via useAuth so we can show "請先登入才能分享" when guest, and
+  // the share button hits the API endpoint that requires uid.
+  const { user } = useAuth();
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const canShare = Boolean(user && imageUrl);
+
+  const handleShare = useCallback(async () => {
+    if (!user) {
       toast({
-        title: "AI 文字辨識失敗",
-        description: `${message}(請稍後再試,或確認網路是否暢通。)`,
+        title: "請先登入才能分享",
+        description: "右上角點頭像登入 Google 帳號,就能建立分享連結。",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!imageUrl) {
+      toast({
+        title: "雲端儲存還沒準備好",
+        description: "貼圖剛生成時還在上傳到雲端,請等幾秒再試一次。若 GCS 上傳失敗(極少數)就無法分享。",
+        variant: "destructive",
+      });
+      return;
+    }
+    setShareLoading(true);
+    setShareUrl(null);
+    setShareCopied(false);
+    try {
+      const { shortCode } = await customFetch<{ shortCode: string }>(
+        "/api/stickers/share",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            texts,
+            theme: theme ?? null,
+            styleId: styleId ?? "pop-mart-3d",
+            sheetUrl: imageUrl,
+          }),
+        },
+      );
+      // Always build the share URL pointing at the canonical Firebase Hosting
+      // domain — even if the user is on the GitHub Pages mirror, the share
+      // link should be the cleaner *.web.app form so OG meta works
+      // consistently.
+      const url = `https://tietu.web.app/share/${shortCode}`;
+      setShareUrl(url);
+      setShareModalOpen(true);
+    } catch (error) {
+      console.error("Share creation failed", error);
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "分享連結建立失敗。";
+      toast({
+        title: "分享建立失敗",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setShareLoading(false);
+    }
+  }, [user, imageUrl, texts, theme, styleId, toast]);
+
+  const handleCopyShareUrl = useCallback(async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
+    } catch {
+      // Older browsers / non-secure contexts fall back to selection.
+      toast({
+        title: "複製失敗",
+        description: "請手動選取網址後 Ctrl+C / ⌘+C 複製。",
         variant: "destructive",
       });
     }
-  };
+  }, [shareUrl, toast]);
+
+  const lineShareUrl = useMemo(() => {
+    if (!shareUrl) return null;
+    return `https://line.me/R/msg/text/?${encodeURIComponent(`我用 TieTu 做了一組 Q版貼圖,來看看! ${shareUrl}`)}`;
+  }, [shareUrl]);
+  const fbShareUrl = useMemo(() => {
+    if (!shareUrl) return null;
+    return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+  }, [shareUrl]);
 
   const handleDownloadSheet = async () => {
     try {
@@ -551,6 +708,27 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
               <PackageCheck className="w-4 h-4 mr-2" />
             )}
             下載 LINE 上架版 (ZIP)
+          </Button>
+          <Button
+            onClick={handleShare}
+            disabled={shareLoading || !canShare}
+            title={
+              !user
+                ? "請先登入才能分享(右上角頭像)"
+                : !imageUrl
+                  ? "貼圖正在上傳到雲端,請稍後再試"
+                  : "建立公開分享連結,任何人點都看得到這組貼圖"
+            }
+            variant="outline"
+            className="rounded-full border-primary/30 hover:bg-primary/10 font-bold shadow-sm"
+            data-testid="button-share"
+          >
+            {shareLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Share2 className="w-4 h-4 mr-2" />
+            )}
+            分享
           </Button>
         </div>
       </div>
@@ -732,7 +910,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleVerifyOcr}
+                      onClick={() => void handleVerifyOcr()}
                       disabled={ocrState === "loading" || !sheetBase64}
                       className="rounded-full text-xs h-8"
                       data-testid="ocr-verify-button"
@@ -756,7 +934,7 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    AI 偶爾會把中文寫成形似的錯字。點上方按鈕會用 Gemini Vision 一次讀完整張 24 格,告訴你哪幾格可能寫錯了。中英文混合(Hi、YA)都能辨識。
+                    AI 偶爾會把中文寫成形似的錯字。<strong>貼圖完成後會自動用 Gemini Vision 驗證一次</strong>,結果直接顯示在下方。你也可以隨時點「重新檢查」再跑一次。中英文混合(Hi、YA)都能辨識。
                   </p>
                   {ocrError && (
                     <p className="text-[11px] text-destructive font-medium leading-relaxed pt-1">
@@ -940,6 +1118,84 @@ export function StickerResult({ sheetBase64, texts, onBack, onOpenHistory }: Sti
           }
         }}
       />
+
+      {/* N3 — Share modal */}
+      <Dialog open={shareModalOpen} onOpenChange={setShareModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="w-4 h-4 text-primary" />
+              分享你的貼圖
+            </DialogTitle>
+            <DialogDescription>
+              這個連結是公開的 — 任何人點開都能看到這組貼圖,但 <strong>看不到</strong> 你的原始大頭照。每次點擊會記錄一次瀏覽數。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 p-2">
+              <input
+                type="text"
+                readOnly
+                value={shareUrl ?? ""}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 bg-transparent text-xs sm:text-sm outline-none truncate font-mono"
+                data-testid="share-url-input"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleCopyShareUrl}
+                disabled={!shareUrl}
+                className="rounded-md h-8 px-2"
+                data-testid="button-share-copy"
+              >
+                {shareCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 mr-1 text-[#06C755]" />
+                    <span className="text-xs">已複製</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 mr-1" />
+                    <span className="text-xs">複製</span>
+                  </>
+                )}
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (lineShareUrl) window.open(lineShareUrl, "_blank", "noopener,noreferrer");
+                }}
+                disabled={!lineShareUrl}
+                className="rounded-full font-bold border-[#06C755]/30 hover:bg-[#06C755]/10 text-[#06C755]"
+                data-testid="button-share-line"
+              >
+                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                分享到 LINE
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (fbShareUrl) window.open(fbShareUrl, "_blank", "noopener,noreferrer");
+                }}
+                disabled={!fbShareUrl}
+                className="rounded-full font-bold border-[#1877F2]/30 hover:bg-[#1877F2]/10 text-[#1877F2]"
+                data-testid="button-share-fb"
+              >
+                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                分享到 Facebook
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              💡 提示:這個連結永久有效,但雲端儲存中的貼圖檔案保留 7 天後會自動清除。如果想長期保存,請務必下載 ZIP 留底。
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <StickerLineExportDialog
         open={lineExportOpen}

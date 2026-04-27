@@ -43,6 +43,22 @@ service cloud.firestore {
     }
 
     // -----------------------------------------------------------------
+    // TieTu — public share entries (N3 sharing feature).
+    // Read access is intentionally OPEN so anonymous users can hit a
+    // share link without signing in. Writes are server-only — the
+    // `POST /api/stickers/share` Cloud Function uses firebase-admin
+    // (which bypasses these rules), so denying client writes here adds
+    // defence in depth even if the SPA were compromised.
+    //
+    // The doc shape is enforced server-side in routes/shares.ts; we
+    // don't repeat the validation here because clients cannot write.
+    // -----------------------------------------------------------------
+    match /shared/{shortCode} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // -----------------------------------------------------------------
     // Default deny — Zhuyin (or any other app sharing this Firebase
     // project) is expected to add its own `match` blocks ABOVE this
     // line in their own PR. Never broaden this rule to allow:if true.

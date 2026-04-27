@@ -3,9 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>3D Q版貼圖生成器</title>
+    <title>TieTu — 3D Q版貼圖生成器</title>
     <meta name="description" content="上傳一張大頭照，一鍵生成 24 張屬於你的專屬 3D Q版貼圖！" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Open Graph (FB / LINE) -->
+    <!-- Static fallback only. /share/:code currently shares this same default
+         preview because OG meta is parsed before the SPA hydrates. Dynamic
+         per-share OG (Cloud Function user-agent rewrite) is a follow-up — see
+         README §13.9 N3 notes. -->
+    <meta property="og:title" content="TieTu — 3D Q版貼圖生成器" />
+    <meta property="og:description" content="上傳一張大頭照，一鍵生成 24 張屬於你的專屬 3D Q版貼圖！" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tietu.web.app/" />
+    <meta property="og:image" content="https://tietu.web.app/opengraph.jpg" />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="720" />
+    <meta property="og:locale" content="zh_TW" />
+    <meta property="og:site_name" content="TieTu" />
+
+    <!-- Twitter Card (also picked up by some clients as a secondary hint) -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="TieTu — 3D Q版貼圖生成器" />
+    <meta name="twitter:description" content="上傳一張大頭照，一鍵生成 24 張屬於你的專屬 3D Q版貼圖！" />
+    <meta name="twitter:image" content="https://tietu.web.app/opengraph.jpg" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
