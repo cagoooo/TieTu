@@ -982,23 +982,91 @@ jobs:
   - GitHub Secret Scanning Alert #1 已 dismissed as `false_positive`
   - 完整防線:API Restrictions(已有)+ Referrer Restrictions(新)+ Authorized Domains(已有)+ Firestore Rules(已有)= 4 道把關
 
-##### 📚 Skills / Memory(今天新增)
+##### 📚 Skills / Memory(2026-04-26 新增)
 - ✅ 寫了新 skill `gemini-free-tier-first`(Gemini Free Tier 優先設計工作流,專破「以為要付費」迷思,3 層成本護欄 SOP)
-- 📍 既有的 `firebase-ci-troubleshooter` Fix #8 + `gcp-api-key-secure-create` 特殊情況段在今天的 Browser key 處理派上用場,SOP 完全照打
+- 📍 既有的 `firebase-ci-troubleshooter` Fix #8 + `gcp-api-key-secure-create` 特殊情況段在 Browser key 處理派上用場,SOP 完全照打
 
 ---
 
-**現況**:`https://tietu.web.app/` + `https://cagoooo.github.io/TieTu/` 都活著,生成貼圖完整流程可跑,有 Auth + 跨裝置歷史 + 5 畫風 + 4 道 key 防線 + 4 階段進度 UI + Gemini Vision 驗證,**月成本 $0,Gemini 用量 28% / 100 RPD**。
+##### 🔥 2026-04-27 大爆發(這天 9 個 milestones)
+
+###### 🎯 N2 自動驗證(0.5 day → 0.5 day 達標)
+- ✅ 進結果頁 400ms 後自動觸發 `/api/stickers/verify-text`
+- ✅ `silentSuccess: true` 模式 — 全對時不噴 toast,有錯字才主動跳出來
+- ✅ `autoVerifiedKeyRef` 去重,同一張 sheet 只跑一次,但回上頁重生會重觸發
+- ✅ 「重新檢查」按鈕仍正常,且仍會噴成功 toast(手動 trigger 該有反饋)
+
+###### 🛡️ P0-C Gemini API quota override(15 min)
+- ✅ 用 `gcloud alpha services quota update` 三條:
+  - `api_requests` 30 RPM(原無限)
+  - `generate_content_free_tier_requests` 10 RPM(原 15)
+  - `generate_content_free_tier_requests` **200 RPD**(原 1500)
+- ✅ 即使 Turnstile 被繞過 + maxInstances 全滿,Gemini 自己 429 拒絕,**絕不跳付費**
+
+###### 🔗 N3 分享 URL + OG meta(1 day)
+- ✅ 後端 `POST /api/stickers/share`(Auth + Turnstile)+ `GET /api/stickers/shared/:code`(公開讀)
+- ✅ 8 字元短碼,32 字母表去除 `l/0/1` 避免肉眼混淆
+- ✅ Firestore rules `/shared/{code}` 公開讀 + 禁 client 寫(server-only via firebase-admin)
+- ✅ 結果頁「分享」按鈕(在 LINE 上架版旁)→ Modal:**複製 URL + LINE 直連 + FB 直連 + 7-day retention 提醒**
+- ✅ 公開檢視頁 `/share/:code`(Wouter route,免登入)— 顯示 sheet 圖、24 字標籤、瀏覽次數、阿凱老師 footer、「我也要做一組」CTA
+- ✅ Static OG meta(`opengraph.jpg` 1280×720)+ Twitter Card
+- ✅ Workflow fix:`deploy.yml` 加進 `firestore:rules` scope(否則 rule 改動不會自動推到雲端)
+- 🐛 **意外踩雷 + 解決**:GitHub Actions SA 缺 `roles/firebaserules.admin` → 補上後重跑 → 綠燈
+
+###### 🎨 阿凱老師連結改造 + UI 繽紛化
+- ✅ 3 處 `smes.tyc.edu.tw` 連結 → `https://cagoooo.github.io/Akai/`(home.tsx 2 處 + share.tsx 1 處)
+- ✅ 「阿凱老師其他作品」pill 大改造:**粉 → 紫紅 → 琥珀**三色漸層 + hover 滑動 + Sparkles 慢脈動 + scale-105 lift + ring-1 white/30 puffy 感
+
+###### 🔔 LINE 管理員通知(完整 milestone)
+- ✅ 新 workspace package `@workspace/integrations-line-server`(zero-dep,native fetch,420 行)
+- ✅ `notifyAdmin()` hook 進 `/api/stickers/generate` 三條路徑:success / classified-failure / unclassified-failure,**fire-and-forget** 不阻塞使用者回應
+- ✅ 跨專案共用 LINE Bot Channel(同 smes-e1dc3 既存的)— 純 push 不衝突 webhook
+- ✅ 兩個新 secret `TIETU_LINE_CHANNEL_ACCESS_TOKEN` + `TIETU_LINE_ADMIN_USER_ID`(printf pipe 灌入,無 \n 雷)
+- ✅ Skill `line-messaging-firebase` 加上「阿凱老師個人化預設」段(Channel ID + Token + admin userId 全寫進 skill,**未來新專案不用再貼憑證**)
+- ✅ 線上實測 HTTP 200 + 訊息送達(7 條測試 + 預覽訊息全部成功)
+
+###### 🎨 LINE Flex 卡片化(N2/N3 之後的 UX 加碼)
+- ✅ Plain text → Flex Message 卡片 + 純文字 fallback(雷 #9 防護):
+  - 🎉 **生成成功** → LINE 綠 header(`#06C755`)+ 4 欄資料 + 「🖼 查看完整貼圖」primary button 直連 GCS imageUrl
+  - ❌ **生成失敗** → 紅 header(`#EF4444`)+ **粉紅錯誤代碼框**(`#FEF2F2` 底 + `#DC2626` 字)+ 訊息分塊 + 6 種錯誤分類
+  - ⚠️ **文字驗證失敗** → 琥珀 header(`#F59E0B`)+ 訊息分塊
+- ✅ altText 保留純文字版作 lock-screen preview + Flex 失敗時 fallback
+- ✅ 全 6-digit hex 色碼(避免 LINE 拒收 `#888` 雷 #9)
+- ✅ 線上預覽 3 張卡片 HTTP 200 × 3
+
+###### 🩹 HEIC 雙層 bug(從使用者實測抓出來的)
+- ✅ **第 1 層(前端)**:`<img>` 不支援 HEIC → 破圖示 → 加 `isUnpreviewableFormat()` 主動偵測 + `<img onError>` 補網,降級到**橘色 fallback 卡**(檔名/大小/「上傳生成沒問題!」)
+- ✅ **第 2 層(後端)**:Chrome 對 HEIC 不認時 file.type 變 `application/octet-stream` → `decodePhoto()` 舊 regex 只認 `image/(png|jpeg|webp|heic|heif)` → 整個 data URL 被當 base64 內容 → 含 `:` `;` 不在 base64 alphabet → 400「不是有效 Base64」。**修法**:regex 放寬成 `/^data:[^,]*;base64,(.+)$/i`,讓 magic-byte 接管 MIME 判斷
+- ✅ 兩雷都寫進 README §14 FAQ + commit 訊息留學習筆記:「**前端 MIME 是『提示』不是『真相』,後端永遠用 magic-byte 判斷實際格式**」
+- ✅ 拖放支援 HEIC(file.type 空時也接受 .heic/.heif 副檔名)
+- ✅ Placeholder 文案更新:「支援 JPG / PNG / WEBP / **HEIC**」
+
+###### 📚 Skills / Memory(2026-04-27 新增)
+- ✅ `line-messaging-firebase` skill 大幅更新:
+  - 新增「🎭 兩種使用模式」段(純 Push vs 雙向 Bot 互動)
+  - 新增「🔑 三個常被搞混的 LINE 憑證」對照表(Channel ID / Secret / Access Token)
+  - 新增「🌐 跨專案共用 LINE Channel」實務建議
+  - 新增「🔧 阿凱老師個人化預設」(含實際憑證 + 新專案 SOP + zero-dep 程式碼骨架)
+  - 新增「🎨 LINE Flex Message 卡片式通知」(4-state 色彩語意 + 完整 helper 模板)
+- ✅ README §14 FAQ 加 2 條 HEIC 雷紀錄(預覽破圖 + 後端 400)
+- ✅ Repo 進度標記:**v0.1.1**(LINE Flex + HEIC 修補)
 
 ---
 
-### 13.1 — P0 仍待補強(P0-A/B/D 已完成,下方僅剩 1 條)
+**現況(2026-04-27 收盤)**:
+- ✅ `https://tietu.web.app/` + `https://cagoooo.github.io/TieTu/` 完整功能上線
+- ✅ Auth + 跨裝置歷史 + 5 畫風 + 4 道 key 防線 + 4 階段進度 UI
+- ✅ Gemini Vision 自動驗證(95%+ 準確,進結果頁自動跑)
+- ✅ 公開分享 URL + 公開頁 + LINE/FB 直連
+- ✅ LINE Flex 卡片即時通知(🎉 / ❌ / ⚠️ 三種狀態)
+- ✅ HEIC iPhone 照片完整支援(預覽友善 + 後端正確接收)
+- 💰 **月成本 $0**,Gemini 用量 < 30% / 100 RPD,4 層成本護欄就位
 
-| 項 | 內容 | 為何重要 | 估時 |
-|---|---|---|---|
-| **P0-C** | **Gemini API quota override**(GCP Console → IAM → Quotas) 設 daily 上限 | 比 Budget Alert 更直接 — 達上限直接 429,不會有「付費跳出 free tier」的灰色地帶 | 15 min |
+---
 
-> ✅ P0-A / B / D 已在階段 B 完成。P0-C 我可以幫你全自動跑完(`gcloud compute project-info` + quota override REST call)。
+### 13.1 — P0 仍待補強 ✅ **全部完成(P0-A/B/C/D)**
+
+> 🎉 P0 安全護欄四連全部上線:Budget Alert + Turnstile + **quota override** + Node 24。沒有 P0 殘留。
 
 ---
 
@@ -1034,8 +1102,8 @@ jobs:
 |---|---|---|---|
 | **P3-2** | **Stripe 付費**(`stripe-replit-sync` 已預留;改 Stripe vanilla):Free 5 張/月 / Plus 100/月 / Pro 無限。**Phase 2A 已有 uid**,Stripe metadata 直接掛 uid 即可 | 免費版規模化不可持續 | 2 wk |
 | **P3-4** | 多語系(i18n;zh-Hant / zh-Hans / en / ja),預設 24 個 `DEFAULT_TEXTS` 對應每語系一份。**Gemini Vision 已能讀英文**,英文版 prompt 直接可上 | 把 TAM 從台灣擴到 CJK 全區 + 英語使用者 | 3 day |
-| **P3-7** | LINE Bot 介面:LINE Messaging API,使用者直接在 LINE 上傳照片就能拿到貼圖 ZIP。可重用 `line-messaging-firebase` skill 的 SOP | 不用打開瀏覽器,使用門檻 0 | 1 wk |
-| **P3-8** | **生成歷史社群展示**(僅同意分享的使用者):像 Lensa / Replicate 的 trending 牆。Phase 2B Firestore 已有結構 | 增加曝光 + 風格參考 | 1 wk |
+| **P3-7** | LINE Bot 介面:LINE Messaging API,使用者直接在 LINE 上傳照片就能拿到貼圖 ZIP。**`line-messaging-firebase` skill 的 SOP 已就位**,管理員告警(2026-04-27)鋪好了 push 端基礎,只差雙向 webhook | 不用打開瀏覽器,使用門檻 0 | 1 wk |
+| **P3-8** | **生成歷史社群展示**(僅同意分享的使用者):像 Lensa / Replicate 的 trending 牆。**Phase 2B Firestore 已有結構,N3 分享 URL 也已上(2026-04-27)**,加 trending 排序就好 | 增加曝光 + 風格參考 | 1 wk |
 | **P3-9** | **「直接送審 LINE」**(用 LINE Creators API 自動上傳 ZIP) | 目前是手動下載 → 上傳。一鍵送審是大幅降低門檻 | 2 wk(需 LINE 商業帳號) |
 | **P3-10** | **多人合照變多角色**(輸入一張多人照,輸出每人一組 24 張) | 單人擴到家庭 / 班級 | 1–2 wk |
 
@@ -1055,47 +1123,50 @@ jobs:
 
 ---
 
-### 13.6 — 短/中/長期建議路線(2026-04-26 重新校準)
+### 13.6 — 短/中/長期建議路線(2026-04-27 重新校準)
 
-#### 🎯 下個 session(1 小時內可結束 — 把剩下的 P0/P1 收尾)
+#### 🎯 下個 session(1 小時內可結束 — 把剩下的 P1 DX 收尾)
 ```
-15 min:P0-C Gemini API quota override(API quota daily cap 補強 P0-A)
-15 min:P1-1 Vite dev proxy(本機開發者一進門就能用)
+15 min:P1-1 Vite dev server /api proxy(本機開發者一進門就能用)
 30 min:P1-5 /api/readyz + P1-6 AbortController 取消按鈕
+20 min:P1-2 zod env validation(api-server/src/env.ts)
 ```
-做完後 P0 全 ✅、P1 過半,**安全護欄 + 開發者 DX 都收得乾乾淨淨**。
+做完後 P1 過半,**開發者 DX 收得乾乾淨淨**。
 
-#### 📅 下個月(週末做 1 個 — 規模化基建)
+#### 📅 下個月(週末做 1 個 — 規模化基建 + 教育市場)
 ```
-Week 1:P1-2 zod env validation + P1-4 multipart upload
-Week 2:P2-1 背景 job 化(Cloud Run 60s 限制的根治方案)
-Week 3:P2-4 Firebase Auth 用戶分層限流(uid 已有,接通即可)
-Week 4:P3-4 多語系 → 把 TAM 從台灣擴到 CJK + 英語
+Week 1:P1-4 multipart upload(省 33% RAM)+ P3-4 多語系前置
+Week 2:N7 班級模板包 MVP(老師上傳班級照,辨識人臉,逐一生成)
+Week 3:P3-2 Stripe 付費接通(uid 已有,metadata 直掛)
+Week 4:N16 LINE 失敗連發告警(同 errorCode 5 分鐘 5 次 → ⚠️ 卡片)
 ```
+> 💡 **N7 + P3-2 一起做**最划算 — N7 沒有 Stripe 撐不住成本,Stripe 沒有 N7 沒人想付月費。
 
-#### 🚀 下季(商業化 + 規模化)
+#### 🚀 下季(商業化 + 平台化)
 ```
-Month 1:P3-2 Stripe 付費 + 額度管理(metadata 掛 uid 即可)
-Month 2:P3-7 LINE Bot 介面 + P3-9 直送 LINE 審核
-Month 3:P3-8 社群展示牆 + P3-10 多人合照拆角色
+Month 1:P2-1 背景 job 化(解 Cloud Run 60s 限制,N7 班級包必備)
+Month 2:P3-7 LINE Bot 介面(雙向)+ N20 動態 OG image
+Month 3:P3-8 社群展示牆 + N17 每日使用報告
 ```
 
 #### 🌱 長期(平台化 / 探索)
 ```
-Q3 後:13.9 章的「未來新方向」前 3 名(下方詳述)
+Q3 後:N18 多平台通知抽象(Slack/Discord/Teams)+ N19 主題範本市集
 Q4 後:跨地區部署(asia-southeast1 + us-central1)
 Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 ```
 
 ---
 
-### 13.7 — Top 5「我會親手做」(只有時間做 5 件事,2026-04-26 修訂)
+### 13.7 — Top 5「我會親手做」(只有時間做 5 件事,2026-04-27 修訂)
 
-1. **P0-C** Gemini quota override — 15 分鐘把最後一道 free tier 安全閘關上,**沒做就是裸奔**
-2. **P2-1 背景 job 化** — 這是規模化的卡點,做完後 P3-5 真實進度條才能接續(目前是 client-side 模擬)
-3. **P3-2 Stripe 付費** — 真要長期經營,愈早接愈不痛(Phase 2A 的 uid 已有,Stripe metadata 直接掛)
-4. **P3-7 LINE Bot** — TieTu 用戶族群跟 LINE 重疊度極高,LINE Bot 是最大的「降低門檻」槓桿
-5. **P4-1 測試** — Gemini 棄用速度快,沒測試你不敢升 model;有測試就敢追新版本
+> Top 5 從上次(2026-04-26)的 5 條換掉 2 條(P0-C ✅ 已完成、N1 ❌ 已放棄)。
+
+1. **N7 班級模板包**(MVP)— **TieTu 真正的市場機會** 。老師上傳班級合照 → MediaPipe 偵測人臉 → 逐一生成貼圖。這是「學校老師願意付月費」的唯一槓桿。**估時 1 wk** 做 MVP(沒人臉偵測,先讓老師手動框)
+2. **P3-2 Stripe 付費** — 跟 N7 同步上,Stripe metadata 直接掛 uid。**估時 2 wk**(含 webhook + 額度同步 Firestore)
+3. **P2-1 背景 job 化** — N7 批量生成 30 個學生會打爆 Cloud Run 60s timeout,這個沒做不行。**估時 1-2 day**
+4. **P4-1 vitest 補測試** — 已經有 8+ 個 critical 函式(decodePhoto / detectMimeFromMagicBytes / characterSimilarity / formatNotification / buildPrompt 等),Gemini 模型棄用速度快,有測試才敢追新版本。**估時 1 wk**
+5. **N17 LINE 每日使用報告** — Cloud Scheduler 每天 22:00 推一張 Flex 卡片(今日生成數 / 唯一用戶 / Gemini quota %),**0.5 day** 工作換永久知道營運狀態
 
 ---
 
@@ -1141,28 +1212,16 @@ Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 - **估時**:0.5 day
 - **CP 值**:⭐⭐⭐⭐ — 比 N1 簡單一個量級,真的可行
 
-##### 🆕 N2 — **自動驗證(每次生成完默默跑 verify-text)**
-- **說明**:目前 verify-text 是 opt-in 按鈕。改成「生成完成 → 後台自動跑 verify-text → 平均相似度 < 70% 主動標出來」,使用者不用記得按按鈕
-- **技術可行性**:
-  - 後端 `/api/stickers/generate` 結尾追加 verifyTexts 呼叫(同一個 SDK client)
-  - 回 `{ imageBase64, imageUrl, recognizedTexts, averageSimilarity }`
-  - 前端在切割預覽 UI 上直接畫紅圈在誤判格
-- **先決條件**:今天剛做的 verify-text(✅)
-- **預期效果**:**從「使用者按了才知道有錯」變「主動避開誤判」**,留存率大幅提升
-- **成本**:每張多 1 次 gemini-2.5-flash 呼叫(~10 sec + 0 元 free tier)
-- **估時**:0.5 day
-- **CP 值**:⭐⭐⭐⭐⭐
+##### ✅ ~~N2 — 自動驗證~~ **已完成**(2026-04-27)
+~~- 進結果頁 400ms 後自動觸發 verify-text~~
+~~- silentSuccess mode + autoVerifiedKeyRef 去重~~
+完成於 §13.0 的 2026-04-27 大爆發,實作在 `sticker-result.tsx:469`。
 
-##### 🆕 N3 — **「分享給朋友」可分享 URL**
-- **說明**:Phase 2B 的 Firestore + P2-2 Storage URL 已經有結構。加一個 `POST /api/stickers/share/:entryId` 產生短碼 URL,瀏覽器開啟看到完整貼圖預覽 + ZIP 下載按鈕
-- **技術可行性**:
-  - 新 collection `/shared/{shortCode}` 存 `{ ownerUid, sheetUrl, texts, createdAt, viewCount }`
-  - 短碼用 nanoid(8 chars 夠了)
-  - 前端 `/share/:code` 路由(Wouter 的另一個 Route)
-  - 嵌入 OG image 給 LINE / FB 分享預覽:用 cagoooo.github.io 的 og-social-preview-zh skill 已知 SOP
-- **先決條件**:Phase 2B Firestore(✅)+ P2-2 Storage URL(✅)
-- **估時**:1 day
-- **CP 值**:⭐⭐⭐⭐ — 病毒擴散最直接的加速器
+##### ✅ ~~N3 — 分享 URL~~ **已完成**(2026-04-27)
+~~- POST /api/stickers/share + GET /api/stickers/shared/:code~~
+~~- Firestore /shared/{code} 公開讀 + server-only 寫~~
+~~- 前端 Modal + 公開 /share/:code 頁 + LINE/FB 直連~~
+完成於 §13.0 的 2026-04-27 大爆發。**Static OG meta 已上**(對所有分享連結顯示同一張 og.jpg)。**動態 per-share OG**(讓每個連結有自己的預覽圖)是 follow-up,見 §13.10 N18。
 
 ##### 🆕 N4 — **每日「主題挑戰」**(輕量遊戲化)
 - **說明**:每天 Cloud Scheduler 跑一次,產生「今日主題」(可用 Gemini 自動產:「春天的小貓」「畢業典禮」等),展示在首頁卡片上。使用者點「參加挑戰」→ 預設主題已填好,生成完後可以提交到「今日挑戰牆」
@@ -1287,17 +1346,188 @@ Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 
 ---
 
-#### 🎯 重新校準的 Top 5(2026-04-26 修訂版,絕對推薦)
+#### 🎯 重新校準的 Top 5(2026-04-26 修訂版)— 已過期,看 §13.7
 
-> 「如果只能挑 5 件做,以今天為起點,選哪 5 個?」
+> 上版 Top 5 中:N2 ✅、P0-C ✅、N3 ✅ 已完成;N1 ❌ 已放棄;**N7 班級模板包**仍是最大機會。最新 Top 5 看 §13.7。
 
-| # | 項目 | 為什麼是它 | 估時 |
-|---|------|----------|------|
-| 1 | **N2 自動驗證(默默跑 verify-text)** | 0.5 day 立即把 verify-text 的價值放大 10x — **使用者不用學新功能就受惠** | 0.5 day |
-| 2 | **P0-C Gemini quota override** | 最後一道安全閘,15 分鐘永絕後患 | 15 min |
-| 3 | **N1 重生這幾格** | verify-text 找到錯字後不重整張,**省 70% Gemini quota** | 1-2 day |
-| 4 | **N3 分享 URL + OG preview** | 病毒傳播加速器,直接打通 LINE/FB/IG 分享卡片 | 1 day |
-| 5 | **N7 班級模板包**(含 P3-2 付費) | **教育市場是 TieTu 最大商機**,這個做完才有「老師會自願付月費」的動機 | 2 wk(含付費) |
+---
+
+### 13.10 — 🆕🆕 第二波未來方向(2026-04-27 收盤後想到的全新點子)
+
+> 經過一整天 9 個 milestones 衝刺後,我們現在多了**LINE 通知管道、Flex 卡片基礎、HEIC 完整支援、分享 URL 結構、verify-text 自動跑**這些新基建。下面是**只有今天的基建鋪好才解鎖**的全新點子。一樣 4 種風險等級分類。
+
+---
+
+#### 🟢 高 CP 值(Q1 內可分批做完)
+
+##### 🆕 N16 — **LINE 連發失敗告警**(LINE Flex 副產品)
+- **說明**:同一個 errorCode 在 5 分鐘內出現 ≥ 5 次 → 推一張**緊急 Flex 卡**(深紅 header + 「📊 5 分鐘內 5 次 safety_block」+ 計數)
+- **技術可行性**:
+  - Cloud Function 內 in-memory ring buffer(每個 instance 自己記)
+  - 或更穩:Firestore atomic counter `/alerts/error_burst/{errorCode}` 配 TTL
+  - 觸發後 **30 分鐘冷卻**,避免轟炸
+- **預期效果**:**主動把系統性問題告訴你**(quota 異常飆、Gemini 模型壞掉、有人在攻擊),你不用每天看 GCP Logs
+- **先決條件**:LINE Flex 已上(✅ 2026-04-27)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐⭐ — 把 LINE 通知從「日常雜訊」升級到「真的告警系統」
+
+##### 🆕 N17 — **每日使用報告 LINE 卡**(Cloud Scheduler 自動推)
+- **說明**:每天台灣時間 22:00,Cloud Scheduler 觸發 Cloud Function,推一張藍色 header 的 Flex 卡:
+  ```
+  📊 TieTu 今日報告
+  ━━━━━━━━━━━━━
+  🎨 生成數     12
+  👤 唯一用戶   4
+  ⚙️  Gemini quota  35% / 100 RPD
+  💾 GCS 儲存   8.4 MB
+  ⏰ 最後生成   21:43
+  ```
+- **技術可行性**:
+  - Cloud Scheduler 定時打 `/api/internal/daily-report`(用 Bearer token 保護)
+  - 統計來源:Firestore `/users/{uid}/tietu_history` 用 createdAt > today 的 count(若有 admin SDK)
+  - Gemini quota:呼叫 `gcloud alpha services quota usage` REST(或保守估計)
+- **先決條件**:LINE Flex 已上(✅)+ Phase 2B Firestore 歷史(✅)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐⭐ — **永久知道營運狀態**,不用主動查
+
+##### 🆕 N18 — **每張分享連結都有自己的 OG image**(動態 OG)
+- **說明**:目前 `/share/:code` 都顯示同一張 `opengraph.jpg`,因為 LINE/FB 爬蟲沒跑 JS。改成 Cloud Function 偵測 `User-Agent: facebookexternalhit | LINE | Twitterbot` → 動態回 HTML(嵌入該 share entry 的 sheetUrl 當 `og:image`),其他 user-agent 回 SPA shell
+- **技術可行性**:
+  - Firebase Hosting `firebase.json` rewrite `/share/**` → `tietu_share_seo` 新 Cloud Function
+  - Function 內檢查 UA:
+    - 爬蟲 → fetch Firestore 拿 share data → 回靜態 HTML(meta tag 有 sheetUrl)
+    - 真人 → 直接 redirect 到 SPA `/share/:code`(client-rendered)
+- **預期效果**:每個朋友收到的 LINE/FB 連結預覽,**都會看到那組貼圖的 sheet 縮圖**而不是一樣的 generic 圖
+- **先決條件**:N3 ✅ + 適合套用 `og-social-preview-zh` skill 的 1200×630 OG 生成
+- **估時**:1 day
+- **CP 值**:⭐⭐⭐⭐ — 病毒擴散直接 +50%(對的縮圖才會被點)
+
+##### 🆕 N19 — **分享連結 QR Code**(現場上課 / 工作坊神器)
+- **說明**:Modal 加一個「📱 顯示 QR Code」按鈕 → 用 `qrcode.react`(2 KB)動態產生 QR → 上課現場放螢幕 / 投影片,學生手機掃就能看
+- **技術可行性**:
+  - 純前端,client-side render(zero backend cost)
+  - 使用情境:老師生完一組班級貼圖 → 投影 QR → 學生掃 → 進 share 頁可下載 ZIP
+- **先決條件**:N3 ✅
+- **估時**:1 hr
+- **CP 值**:⭐⭐⭐⭐ — **教學現場最直觀的分享方式**,1 小時工作換永久工具
+
+##### 🆕 N20 — **Smart Re-prompt(N1 的真實版)**
+- **說明**:取代 N1 的「重生這幾格」(已放棄)。verify-text 找到錯字 → 點「再做一組」時,**自動把 prompt 加上對應提醒**:
+  ```
+  PREVIOUS_GENERATION_HAD_ERRORS = """
+  cell #4: expected 抱抱, got blank
+  cell #12: expected 害羞, got 了了奢
+  Pay extra attention to render these cells correctly.
+  """
+  ```
+- **技術可行性**:
+  - 後端 `buildPrompt()` 多吃一個 `previousErrors?: Mismatch[]` 參數
+  - 前端 home.tsx 把 verify-text 的 mismatches 暫存在 useState,再生成時帶過去
+- **預期效果**:**LLM 對「不要再犯這個錯」這類提示通常很有效**(ML 文獻有支撐),預估錯字復發率 -60%
+- **先決條件**:N2 自動驗證(✅)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐ — 用簡單的 prompt engineering 解決 N1 想解決的問題
+
+---
+
+#### 🟡 中度可行(Q2 後)
+
+##### 🆕 N21 — **多平台通知抽象**(Slack / Discord / Teams)
+- **說明**:把 `notifyAdmin()` 從「LINE 專用」抽象成「多 channel」。給 LINE 用 Flex,給 Slack 用 Block Kit,給 Discord 用 Embed。新 channel 設定只要加一個 secret
+- **技術可行性**:
+  - `lib/integrations-line-server` → 改名 `lib/integrations-notify-server`
+  - 新增 `sendSlack()`、`sendDiscord()` adapter
+  - 環境變數抓 `TIETU_NOTIFY_TARGETS=line,slack`(逗號分隔)
+- **適用情境**:其他學校 / 公司 fork 這個專案後,想用 Slack 接告警
+- **估時**:2 day
+- **CP 值**:⭐⭐⭐ — 自己用不到,但對 fork 友善 + 寫成 skill 後可重用所有專案
+
+##### 🆕 N22 — **「主題範本市集」**(教育情境一鍵套)
+- **說明**:預設一些熱門主題(畢業典禮 / 母親節 / 運動會 / 兒童節 / 教師節 / 班級週報)讓老師 1 鍵套用,**不用想 24 個詞**
+- **技術可行性**:
+  - 後端 `/api/templates` GET 列出所有 templates(從 Firestore `/templates/{id}` 讀)
+  - 前端首頁加「📚 範本市集」按鈕 → Modal 顯示 12 個範本卡片 + 預覽
+  - 點選 → 自動把 `theme` + 24 個 `texts` 填好,使用者只要傳照片
+- **預期效果**:從「想 24 個詞」(現在最高摩擦)變成「**選一個範本,5 秒生圖**」
+- **先決條件**:無(可獨立做)
+- **估時**:1.5 day(含 12 個範本內容設計)
+- **CP 值**:⭐⭐⭐⭐⭐ — **教育市場最直接的痛點解**
+
+##### 🆕 N23 — **客戶端圖片瘦身**(上傳前先壓縮)
+- **說明**:大於 2 MB 的照片在前端 resize 到 1280×1280 max(維持比例)、JPEG quality 0.85,再丟給 base64 → 後端
+- **技術可行性**:
+  - 用 `<canvas>` + `drawImage()` resize(zero dep)
+  - HEIC 例外:不支援 client resize,直接傳原始(後端記憶體要 1 GiB 才扛得住 10 MB HEIC)
+- **預期效果**:平均上傳時間 -60%(8 MB → 1 MB),Cloud Functions 記憶體壓力 -80%
+- **先決條件**:HEIC 例外處理(2026-04-27 ✅ 已就位)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐ — **手機 4G 用戶感受度最大**
+
+##### 🆕 N24 — **「為班級每個學生產一份」**(N7 進階版,跟 P3-10 接軌)
+- **說明**:N7 是「同一張臉生 24 張貼圖」,N24 是「**一張班級照,每張臉各生 24 張貼圖**」
+- **技術可行性**:
+  - **MediaPipe Face Detection**(client-side,免費,精確 bbox)抓出每張臉
+  - 老師確認順序 + 對應姓名(可拖曳)
+  - 後端批量生成(N 個學生 × 1 sheet = N 個 generate calls)
+  - 必須先做 P2-1 背景 job(否則 30 學生會 timeout)+ P3-2 Stripe(quota)
+- **CP 值**:⭐⭐⭐⭐⭐ — **這是 TieTu 的「教育市場決勝武器」**
+
+---
+
+#### 🔴 實驗性(Q3+ 才嘗試)
+
+##### 🆕 N25 — **LINE Bot 雙向 + 帳號綁定**(P3-7 的詳盡版)
+- **說明**:目前我們只用 push,push 已經夠;但**如果**你要讓使用者「在 LINE 裡傳照片給 bot 就生貼圖」,就需要新建一個 LINE Channel(你既存的那個是阿凱專用,webhook 衝突)
+- **技術可行性**:
+  - 新 Channel + 新 webhook → Cloud Function 接收 LINE 訊息事件
+  - 訊息事件含照片 → 下載 → 走 generate 流程
+  - 透過 `line-messaging-firebase` skill 已有的 Phase 1+2 SOP 走
+- **估時**:1 wk(skill 已有完整 phase-roadmap)
+- **CP 值**:⭐⭐⭐⭐ — TAM 從「會打開瀏覽器的家長/老師」擴到「**所有用 LINE 的台灣人**」(全國 95%+)
+
+##### 🆕 N26 — **影片貼圖**(Lyria 3 + Gemini Image)
+- **說明**:Gemini 已有 `lyria-3-clip-preview`(影片生成模型),可以用「文字 + 圖」生短片(1-3 秒)。為每張貼圖生成 1 個小循環動畫
+- **技術可行性**:
+  - 模型:`lyria-3-clip-preview`(2026-04 已 GA preview)
+  - 成本:大幅高於圖片(影片是 frame × 圖片成本)
+  - 頻寬:24 個短片 ≈ 24 MB,LINE 上架受限(LINE 動態貼圖規範:APNG ≤ 300 KB)
+- **CP 值**:⭐⭐ — **酷但不實用**,因為 LINE 動畫貼圖檔案大小限制嚴
+
+##### 🆕 N27 — **AR 試貼**(WebXR)
+- **說明**:生成完的貼圖,點「📱 AR 試貼」→ 開啟手機鏡頭,貼圖貼在現實世界拍照(像 IG Story)
+- **技術可行性**:WebXR 在 iOS Safari 17+ / Android Chrome 都支援
+- **CP 值**:⭐⭐⭐ — Wow factor 強,實用度看人
+
+##### 🆕 N28 — **Gemini Nano on-device** (Chrome 137+)
+- **說明**:Chrome 137+ 內建 Gemini Nano(本地端 LLM),拿來做**前端的文字改寫**(rewrite-texts API 不用打後端),0 元 + 完全離線
+- **技術可行性**:`window.ai.languageModel.create()`,但圖片生成 Nano 還沒有 → 只能加速文字部分
+- **CP 值**:⭐⭐⭐ — 對符合條件的瀏覽器是 free upgrade,但覆蓋率現在還低
+
+---
+
+#### 🛠️ DX / 工程效能
+
+##### 🆕 N29 — **Cloud Function memory profile + auto-tune**
+- **說明**:目前 `tietu_api` 配 1 GiB,可能過大或過小。看 GCP Logs 的 memory usage,動態調整
+- **技術可行性**:
+  - GCP Console → Cloud Run → tietu_api → 查 Memory utilization
+  - 改 `firebase.json` `memory: '512MiB'` 看會不會 OOM
+- **預期省**:512 MiB 比 1 GiB 便宜 50%(若打到 free tier 上限後計費)
+- **估時**:30 min(配合觀察 1 週用量)
+- **CP 值**:⭐⭐⭐ — 只在進入付費階段才有意義
+
+##### 🆕 N30 — **firestore index 為 N17/N18 鋪路**
+- **說明**:N17 每日報告需要查「今天創的 history」,N18 動態 OG 要查「最近 N 個 share」。先建 composite index 避免查詢時被 Firestore 拒絕
+- **技術可行性**:寫進 `firestore.indexes.json`,deploy workflow 已有 firestore:rules,順手加 firestore:indexes
+- **估時**:30 min
+- **CP 值**:⭐⭐⭐ — 預先做好,N17/N18 才能順
+- **注意**:跟 zhuyin app 的 indexes **不衝突**(我們的 path namespaced)
+
+---
+
+#### 🎯 重新校準的 Top 5(2026-04-27 第二版,真正可動工的)
+
+> Top 5 跟 §13.7 完全對齊,看那邊。**這節不重複**,這節是「**菜單**」,§13.7 是「**最終建議**」。
 
 ---
 
