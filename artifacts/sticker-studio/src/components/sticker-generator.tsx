@@ -55,6 +55,13 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
   function StickerGenerator({ onSubmit, isPending }, ref) {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // True when <img> failed to load (corrupt blob, unsupported format) OR when
+  // we proactively skipped rendering because we know the format won't work.
+  // The most common trigger is iPhone HEIC photos — Chrome / Firefox / Edge
+  // can't decode HEIC via <img>, only Safari can. The backend's magic-byte
+  // sniffer accepts HEIC just fine, so the upload still works; we just
+  // replace the broken <img> with a friendly file-info card.
+  const [previewUnsupported, setPreviewUnsupported] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [captchaError, setCaptchaError] = useState<string | null>(null);
@@ -86,21 +93,38 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
   const theme = form.watch("theme");
   const style = form.watch("style");
 
+  // Detect formats that <img> can't render in non-Safari browsers. HEIC is
+  // the big one (default iPhone format); HEIF/AVIF can also fall over on
+  // older browsers. Check file.type AND filename extension because some
+  // mobile pickers report empty type but keep the extension.
+  const isUnpreviewableFormat = (file: File): boolean => {
+    const t = file.type.toLowerCase();
+    if (t.includes("heic") || t.includes("heif")) return true;
+    const name = file.name.toLowerCase();
+    return name.endsWith(".heic") || name.endsWith(".heif");
+  };
+
+  const acceptFile = (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "檔案過大",
+        description: "請上傳小於 10MB 的圖片",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPhotoFile(file);
+    const url = URL.createObjectURL(file);
+    setPhotoPreview(url);
+    // Skip the <img> render entirely for known-unpreviewable formats so we
+    // don't briefly flash the browser's broken-image icon before the
+    // onError handler fires.
+    setPreviewUnsupported(isUnpreviewableFormat(file));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast({
-          title: "檔案過大",
-          description: "請上傳小於 10MB 的圖片",
-          variant: "destructive",
-        });
-        return;
-      }
-      setPhotoFile(file);
-      const url = URL.createObjectURL(file);
-      setPhotoPreview(url);
-    }
+    if (file) acceptFile(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -117,18 +141,14 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type.startsWith("image/")) {
-      if (file.size > 10 * 1024 * 1024) {
-        toast({
-          title: "檔案過大",
-          description: "請上傳小於 10MB 的圖片",
-          variant: "destructive",
-        });
-        return;
-      }
-      setPhotoFile(file);
-      const url = URL.createObjectURL(file);
-      setPhotoPreview(url);
+    // file.type can be empty for HEIC files dragged from Finder; relax the
+    // image/* gate by also accepting .heic/.heif filenames.
+    if (
+      file &&
+      (file.type.startsWith("image/") ||
+        /\.(heic|heif)$/i.test(file.name))
+    ) {
+      acceptFile(file);
     }
   };
 
@@ -276,7 +296,46 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                       exit={{ opacity: 0 }}
                       className="relative aspect-square w-full max-w-[240px] mx-auto rounded-xl overflow-hidden shadow-md"
                     >
-                      <img src={photoPreview} alt="預覽" className="w-full h-full object-cover" />
+                      {previewUnsupported ? (
+                        // HEIC / HEIF / unsupported format fallback. The
+                        // backend's magic-byte sniffer accepts these formats
+                        // just fine — it's only the <img> preview that
+                        // can't render them outside Safari. Show file info
+                        // so the user can confirm the right file is
+                        // selected, then proceed with upload.
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 bg-gradient-to-br from-amber-50 to-orange-100 text-center">
+                          <div className="w-14 h-14 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center">
+                            <ImageIcon className="w-7 h-7" />
+                          </div>
+                          <p className="text-sm font-bold text-amber-900">
+                            {photoFile?.name ?? "已選擇檔案"}
+                          </p>
+                          {photoFile && (
+                            <p className="text-[11px] text-amber-700/80 leading-snug">
+                              {(photoFile.size / 1024).toFixed(0)} KB
+                              {photoFile.type ? ` · ${photoFile.type}` : ""}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+                            iPhone HEIC 格式無法在瀏覽器預覽,
+                            <br />
+                            但 <strong>上傳生成沒問題</strong>!
+                          </p>
+                        </div>
+                      ) : (
+                        <img
+                          src={photoPreview}
+                          alt="預覽"
+                          className="w-full h-full object-cover"
+                          onError={() => {
+                            // Triggered when the blob URL fails to decode
+                            // (corrupt file, format unsupported, etc.).
+                            // Switch to the fallback panel so the user
+                            // doesn't see the browser's broken-image icon.
+                            setPreviewUnsupported(true);
+                          }}
+                        />
+                      )}
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                         <span className="text-white font-medium flex items-center gap-2">
                           <ImageIcon className="w-5 h-5" /> 點擊更換
@@ -295,7 +354,7 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                         <Upload className="w-10 h-10" />
                       </div>
                       <p className="text-lg font-bold mb-2">點擊或拖曳上傳</p>
-                      <p className="text-sm text-muted-foreground">支援 JPG, PNG, WEBP (最高 10MB)</p>
+                      <p className="text-sm text-muted-foreground">支援 JPG / PNG / WEBP / HEIC(最高 10MB)</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
