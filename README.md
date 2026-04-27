@@ -1312,6 +1312,7 @@ Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 | API 回 500 `貼圖生成失敗` | Gemini 端錯(quota / safety block / 模型 deprecated 404) | 看 pino log 內 `Gemini did not return an image` 訊息;若 `model not found` 跑 ListModels 確認 model 還在 |
 | 前端送請求都 404 | Vite dev server 沒 proxy | 加 `server.proxy['/api']`(§5) |
 | 上傳 HEIC 後拋「無法辨識的影像格式」 | magic bytes 對不上罕見 sub-brand | 轉 JPG;或在 `detectMimeFromMagicBytes` 多加 brand |
+| **iPhone 上傳照片預覽顯示破圖示+「預覽」alt 文字** | **HEIC 是 iPhone 預設格式,Chrome / Firefox / Edge 都不能用 `<img>` 渲染 HEIC,只有 Safari 可以**。後端 magic-byte 偵測吃 HEIC 沒問題,生成完全正常 — 只是預覽看不到 | **已在 sticker-generator.tsx 修好(2026-04-27):`isUnpreviewableFormat()` 主動偵測 HEIC/HEIF + `<img onError>` 補網,降級到顯示檔名/大小 + 「上傳生成沒問題!」橘色資訊卡。其他客戶端遇到一樣問題請套這個 pattern,別嘗試 heic2any 整合(套件 ~500 KB,不划算)** |
 | `pnpm install` 卡很久 | `minimumReleaseAge: 1440` 在驗證 | 預期行為,首次裝會慢 |
 | Build 抓不到平台二進位 | `pnpm-workspace.yaml` 平台 override 太嚴 | 刪除 overrides(§12.2.A) |
 | `firebase deploy` 失敗:Functions deploy requires Blaze | 還在 Spark | 升 Blaze |
