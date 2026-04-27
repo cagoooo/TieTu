@@ -198,19 +198,31 @@ export default function SharePage() {
         </motion.div>
       </div>
 
-      <footer className="w-full pt-12 pb-8 text-center" data-testid="share-footer">
+      <footer className="w-full pt-12 pb-8 text-center flex flex-col items-center gap-3" data-testid="share-footer">
         <p className="text-xs text-muted-foreground">
-          Made with ❤️ by{" "}
-          <a
-            href="https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline inline-flex items-center gap-1"
-          >
-            阿凱老師
-            <ExternalLink className="w-3 h-3" />
-          </a>
+          Made with ❤️ by 阿凱老師
         </p>
+        <a
+          href="https://cagoooo.github.io/Akai/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="
+            group inline-flex items-center gap-1.5 rounded-full
+            bg-gradient-to-r from-pink-400 via-fuchsia-400 to-amber-400
+            bg-[length:200%_auto] bg-left
+            hover:bg-right hover:scale-105 active:scale-95
+            px-4 py-2 text-xs font-extrabold text-white
+            shadow-md shadow-pink-300/40
+            hover:shadow-lg hover:shadow-fuchsia-400/50
+            ring-1 ring-white/30
+            transition-[background-position,transform,box-shadow] duration-500
+          "
+          data-testid="share-author-link"
+        >
+          <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ animationDuration: "2s" }} />
+          <span className="tracking-wide">阿凱老師其他作品</span>
+          <ExternalLink className="w-3 h-3 opacity-90 group-hover:translate-x-0.5 transition-transform" />
+        </a>
       </footer>
     </div>
   );

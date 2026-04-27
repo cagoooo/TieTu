@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2, Github, GraduationCap, ExternalLink } from "lucide-react";
+import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2, Github, ExternalLink } from "lucide-react";
 import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
 import { StickerHistory } from "@/components/sticker-history";
 import { AuthPill } from "@/components/auth-pill";
@@ -517,7 +517,7 @@ export default function Home() {
                 <Heart className="w-4 h-4 text-red-400 fill-red-400 animate-pulse" style={{ animationDuration: "2s" }} />
                 <span>by</span>
                 <a
-                  href="https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5"
+                  href="https://cagoooo.github.io/Akai/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-bold text-foreground hover:text-primary transition-colors underline-offset-4 hover:underline inline-flex items-center gap-1 group"
@@ -532,15 +532,25 @@ export default function Home() {
               {/* 連結列 */}
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <a
-                  href="https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5"
+                  href="https://cagoooo.github.io/Akai/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background hover:bg-muted hover:border-primary/40 transition-all px-3 py-1.5 text-xs font-medium text-foreground/80 hover:text-foreground shadow-sm"
+                  className="
+                    group relative inline-flex items-center gap-1.5 rounded-full
+                    bg-gradient-to-r from-pink-400 via-fuchsia-400 to-amber-400
+                    bg-[length:200%_auto] bg-left
+                    hover:bg-right hover:scale-105 active:scale-95
+                    px-4 py-2 text-xs font-extrabold text-white
+                    shadow-md shadow-pink-300/40
+                    hover:shadow-lg hover:shadow-fuchsia-400/50
+                    ring-1 ring-white/30
+                    transition-[background-position,transform,box-shadow] duration-500
+                  "
                   data-testid="footer-school-link"
                 >
-                  <GraduationCap className="w-3.5 h-3.5 text-primary" />
-                  阿凱老師其他作品
-                  <ExternalLink className="w-3 h-3 opacity-50" />
+                  <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ animationDuration: "2s" }} />
+                  <span className="tracking-wide">阿凱老師其他作品</span>
+                  <ExternalLink className="w-3 h-3 opacity-90 group-hover:translate-x-0.5 transition-transform" />
                 </a>
                 <a
                   href="https://github.com/cagoooo/TieTu"

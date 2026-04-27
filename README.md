@@ -953,7 +953,7 @@ jobs:
 ##### 🎁 P3-1 進階子功能(超出原 roadmap 範圍)
 - ✅ **Phase 2A** 後端 verifyIdToken middleware(`api-server/src/lib/auth-middleware.ts`)+ `Symbol.for("tietu.firebaseUser")` slot(避開 firebase-admin pulled `@types/express-serve-static-core@4` vs api-server `@types/express@5` 的 type augmentation 衝突)
 - ✅ **Phase 2B** Firestore Rules 嚴格驗證 payload(必填欄位 / 型別 / texts 長度 = 24 / thumbnailDataUrl ≤ 350 KB)
-- ✅ **Footer 重設計**「Made with ❤️ by 阿凱老師」+ 連結到 `https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5`
+- ✅ **Footer 重設計**「Made with ❤️ by 阿凱老師」+ 漸層彩色「阿凱老師其他作品」按鈕連結到 `https://cagoooo.github.io/Akai/`(2026-04-26 從 smes.tyc.edu.tw 站內頁改為個人作品集首頁)
 - ✅ Auth 錯誤訊息友善化(8 種 `auth/*` 錯誤碼對應人話 toast)
 - ✅ Firestore SDK 動態 import → 避開主 bundle 膨脹到 943 KB(現在維持 lazy 236 KB chunk)
 
@@ -1109,16 +1109,26 @@ Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 
 #### 🟢 可行性高、CP 值滿載(Q1 內可分批做完)
 
-##### 🆕 N1 — **「重生這幾格」按鈕**(Gemini Vision 副產品)
-- **說明**:現在 verify-text 已經告訴你哪 8 格錯字。多加一顆「重生這 8 格」按鈕,呼叫 Gemini 用同樣的人物 + 對的文字 + **inpaint 模式**只重畫指定格,其他格保留
+##### ❌ ~~N1 — 「重生這幾格」按鈕~~ **已放棄**(2026-04-26 重新評估)
+- **原構想**:verify-text 找出錯字格 → 只重生那幾格,省 Gemini quota
+- **放棄原因**:**架構誤判**。TieTu 的 24 格不是 24 個獨立小圖,而是 Gemini 一次生一張 1024×1536 的大 sheet,前端用網格線「裁切」成 24 格。要改其中一格的文字,**等於重畫整張圖**(像素是同一塊畫布)。
+  - 簡單版「整張重生」= 已有的「再做一組」按鈕,沒省東西
+  - 進階版「Gemini inpainting」= `gemini-3.1-flash-image-preview` 不可靠支援 mask editing,實測會整張重畫且風格漂移
+  - 最佳版「client 裁格 + 後端只重畫那幾格 + 再拼回」= 接縫色差、人物比例不一致、文字字型不一致,**接起來有違和感**
+- **替代方案**:**N1' 智慧再生提示**(下一條)— 用更小的工程量解決同一個痛點
+
+##### 🆕 N1' — **智慧再生提示**(取代 N1)
+- **說明**:verify-text 找出錯字後,「再做一組」按鈕變成「**修正錯字並重生**」一鍵流程:
+  1. 自動把使用者點回上一頁(已可)
+  2. **自動把 prompt 加上對應提醒**:`PREVIOUS GENERATION HAD THESE ERRORS: cell #4 expected 抱抱 got 空白; cell #12 expected 害羞 got 了了奢...` 讓 Gemini 知道哪些字上次沒寫好,這次特別注意
+  3. 也可以在 buildPrompt() 對上次寫錯的 cell 加重指令:`Use extra-bold weight + larger font for these specific cells: 4, 12, 19`
 - **技術可行性**:
-  - 簡單版:整張重生(已可用,只是浪費)
-  - 進階版:後端把錯誤的 cell 區域 mask 起來,加 `gemini-3.1-flash-image-preview` 的 inpainting 提示。**需驗證該模型支援 mask-based 編輯**(部分 image preview models 才支援)
-  - 最佳版:client-side 抓出 mismatched cell coordinates,只把那幾格送上去當「reference + new label」,後端拼回主 sheet
-- **先決條件**:今天剛做的 verify-text(✅ 已完成)
-- **預期效果**:從「整張 90% 對 → 重做整張」變成「整張 90% 對 → 修補 10% → 100% 完成」,**Gemini quota 用量減 70%**
-- **估時**:1-2 day(取決於 inpainting 是否走得通)
-- **CP 值**:⭐⭐⭐⭐⭐ — 對使用者體驗 + 成本同時是大利多
+  - 純後端 prompt 改動(buildPrompt 多吃一個 `previousErrors?` 參數)
+  - 前端 home.tsx 把 verify-text 的 mismatches 暫存,再生成時帶過去
+- **預期效果**:不能保證 100% 解決,但**對 Gemini 的「同樣錯誤再犯一次」機率有顯著降低**(LLM 對「不要再犯這個錯」這類提示通常有效)
+- **先決條件**:N2 自動驗證(✅ 已完成)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐ — 比 N1 簡單一個量級,真的可行
 
 ##### 🆕 N2 — **自動驗證(每次生成完默默跑 verify-text)**
 - **說明**:目前 verify-text 是 opt-in 按鈕。改成「生成完成 → 後台自動跑 verify-text → 平均相似度 < 70% 主動標出來」,使用者不用記得按按鈕
