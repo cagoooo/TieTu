@@ -22,7 +22,7 @@ if (Number.isNaN(port) || port <= 0) {
 // MSYS path conversion will rewrite the literal "/" into "/Program Files/Git/"
 // before the Node child sees it, producing broken script src in index.html.
 // The default below avoids that footgun entirely.
-const basePath = process.env.BASE_PATH?.trim() || "/";
+const basePath = process.env.BASE_PATH?.trim() || "./";
 
 export default defineConfig({
   base: basePath,

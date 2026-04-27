@@ -24,12 +24,12 @@ import {
 // Pulled via: firebase apps:sdkconfig WEB 1:303602485107:web:79a2106da186bc98c4e706
 // ---------------------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyACBFKgIWgpHIq_CbvYU564xTzhHNBxOpk",
-  authDomain: "zhuyin-challenge-v3-4cd2b.firebaseapp.com",
-  projectId: "zhuyin-challenge-v3-4cd2b",
-  storageBucket: "zhuyin-challenge-v3-4cd2b.firebasestorage.app",
-  messagingSenderId: "303602485107",
-  appId: "1:303602485107:web:79a2106da186bc98c4e706",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "__FIREBASE_API_KEY__",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "__FIREBASE_AUTH_DOMAIN__",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "__FIREBASE_PROJECT_ID__",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "__FIREBASE_STORAGE_BUCKET__",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "__FIREBASE_MESSAGING_SENDER_ID__",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "__FIREBASE_APP_ID__",
 } as const;
 
 let _app: FirebaseApp | null = null;
