@@ -957,7 +957,18 @@ jobs:
 - ✅ Auth 錯誤訊息友善化(8 種 `auth/*` 錯誤碼對應人話 toast)
 - ✅ Firestore SDK 動態 import → 避開主 bundle 膨脹到 943 KB(現在維持 lazy 236 KB chunk)
 
-##### 🔥 2026-04-26 收尾(今天的兩件事)
+##### 🔔 LINE 管理員通知(2026-04-27 新增)
+- ✅ 新 workspace package `@workspace/integrations-line-server`(zero-dep,native fetch)
+- ✅ `notifyAdmin()` hook 進 `/api/stickers/generate` 的 success / classified-failure / unclassified-failure 三條路徑,**fire-and-forget**(不阻塞使用者回應)
+- ✅ 訊息格式:🎉 成功通知含主題/畫風/使用者/imageUrl;❌ 失敗通知含 errorCode + userMessage(分 6 類:safety_block / quota_exhausted / model_not_found / max_tokens / no_image / network / internal)
+- ✅ 跨專案共用 LINE Bot Channel(同 smes-e1dc3 既存的)— 純 push 不衝突 webhook
+- ✅ 兩個新 secret `TIETU_LINE_CHANNEL_ACCESS_TOKEN` + `TIETU_LINE_ADMIN_USER_ID`(printf pipe 灌入,無 \n 雷)
+- ✅ Skill `line-messaging-firebase` 加上「阿凱老師個人化預設」段 — 未來新專案不用再貼憑證
+- ✅ Direct LINE API self-test 通過(HTTP 200 + sentMessages id 回傳),vs prod live test 待使用者觸發
+
+---
+
+##### 🔥 2026-04-26 收尾(這天的兩件事)
 - ✅ **OCR 整套換成 Gemini Vision**(Tesseract.js → `gemini-2.5-flash` 圖文多模態):
   - 新增 `lib/integrations-gemini-server/verify.ts` 的 `verifyTexts()`
   - 新增 `POST /api/stickers/verify-text` 路由(同樣有 Turnstile + Auth 中介)
