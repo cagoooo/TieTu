@@ -879,9 +879,13 @@ jobs:
 
 排序原則:**先安全 → 再體驗 → 再成本/規模 → 最後是能力擴張**。
 
-### 13.0 — 已完成成果(2026-04-26 部署 session)
+### 13.0 — 已完成成果(2026-04 整個改造 session 累積)
 
-從 Replit 搬到 GitHub + Firebase 多應用環境的成果(共 11 個 commits 從 `78fe643` ~ `50c97de`):
+從 Replit 搬到 GitHub + Firebase 多應用環境的成果。本節分**初次部署**與**後續優化**兩個階段,累積 25+ commits:
+
+---
+
+#### 🅰️ 階段 A — 初次部署(commits `78fe643` ~ `50c97de`)
 
 #### 部署與基礎建設(11 項)
 - ✅ Repo push 到 `github.com/cagoooo/TieTu`(public),v0.1.0 tag
@@ -919,66 +923,108 @@ jobs:
 - ✅ Memory feedback `feedback_github_firebase_backend.md` — 未來規劃 GitHub 後端時主推 Firebase
 - ✅ Memory feedback `feedback_windows_git_bash_msys_pathconv.md` — Windows + Git Bash + Vite `BASE_PATH=/` 的 MSYS path conversion 雷防範
 
-**現況**:`https://tietu.web.app/` + `https://cagoooo.github.io/TieTu/` 都活著,生成貼圖完整流程可跑,月成本 **$0**(GCP free tier 內,Gemini quota 有日限但超量也不收費)。
+階段 A 結束狀態:`https://tietu.web.app/` + `https://cagoooo.github.io/TieTu/` 都活著,生成貼圖完整流程可跑,月成本 $0。
 
 ---
 
-### 13.1 — P0 仍待補強(下次有時間立刻做的小動作)
+#### 🅱️ 階段 B — 後續優化(2026-04-21 ~ 2026-04-26,共 14 個增強 commits)
+
+##### 🛡️ P0 安全護欄(全做完 3/4)
+- ✅ **P0-A** GCP Budget Alert:USD 10/mo,50%/90%/100% 三段 email 通知到 `ipad@mail2.smes.tyc.edu.tw`
+- ✅ **P0-B** Cloudflare Turnstile **真實啟用**(site key `0x4AAAAAADDpFZs4dZRoTEIx`,secret 透過 pipe 灌進 Firebase Secrets,沒有任何複製貼上)
+- ✅ **P0-D** GitHub Actions 升 Node 24(三條 workflow 加 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`,自動把 checkout / setup-node / pnpm-action / google-github-actions/* 全部跑在 Node 24)
+- ⏳ P0-C Gemini API quota override(留待之後做)
+
+##### 🎨 P1 體驗精進(完成 4/10)
+- ✅ **P1-3** Gemini 失敗訊息分類(6 類):`safety_block` / `quota_exhausted` / `model_not_found` / `max_tokens` / `no_image` / `network` / `internal`,前端對應 6 種具體 toast 文案
+- ✅ **P1-7** Sentry 5xx error 接通(Cloud Functions 端 + 前端 React Error Boundary 都接,免費 5K events/mo)
+- ✅ **P1-9** Bundle code-split(踩雷後改成「leaf-only」安全方案):`vendor-icons`(lucide-react)+ `vendor-io`(jszip + file-saver)+ `sticker-result` 是動態 lazy chunk + `sticker-history-firestore` 也是 lazy。**主 chunk 維持 706 KB / 223 KB gzip**,首次載入更快。記憶 feedback 已寫入 `feedback_vite_manualchunks_react_split.md`(踩過拆 React 生態白屏的雷)
+- ✅ **P1-10** 整張 PNG 下載也支援去背(`downloadSheet(sheetBase64, effectiveMatte)` 直接套用切割預覽的 toggle 強度)
+
+##### 📈 P2 規模化基建(完成 1/7)
+- ✅ **P2-2** 生成結果上傳 **Firebase Storage**(`gs://tietu-sheets-cagoooo`)+ 回 `imageUrl`,前端 IndexedDB 歷史只存 URL(避開多 MB base64 字串)+ Storage 7 天 lifecycle 自動刪除舊 sheet
+
+##### 🚀 P3 能力擴張(完成 3/10,1 項被升級替換)
+- ✅ **P3-1** Firebase Authentication(Google OAuth)+ Phase 2A 後端 ID token 驗證 + Phase 2B IndexedDB → Firestore 歷史同步(換瀏覽器/裝置仍看得到歷史,1 用戶上限 5 筆)
+- ✅ **P3-3** **5 種畫風選擇器**:`pop-mart-3d` / `clay` / `pixel` / `anime-2d` / `watercolor`,每種有專屬 prompt 風格描述
+- ✅ **P3-5** 前端**即時生成進度 UI**(4 階段:uploading / thinking / generating / polishing,預估 30-90 秒區段顯示)。**注意**:這是純前端時間軸模擬,真正的 P2-1 背景任務化還沒做
+- 🔄 **P3-6** OCR 自動重試 → **被升級替換**:整個 Tesseract.js + chi_tra(67% 誤判率)被換成 **Gemini Vision 多模態驗證**(95%+ 準確,1 次 API 呼叫,免費額度內)。詳見下一段「2026-04-26 收尾」
+
+##### 🎁 P3-1 進階子功能(超出原 roadmap 範圍)
+- ✅ **Phase 2A** 後端 verifyIdToken middleware(`api-server/src/lib/auth-middleware.ts`)+ `Symbol.for("tietu.firebaseUser")` slot(避開 firebase-admin pulled `@types/express-serve-static-core@4` vs api-server `@types/express@5` 的 type augmentation 衝突)
+- ✅ **Phase 2B** Firestore Rules 嚴格驗證 payload(必填欄位 / 型別 / texts 長度 = 24 / thumbnailDataUrl ≤ 350 KB)
+- ✅ **Footer 重設計**「Made with ❤️ by 阿凱老師」+ 連結到 `https://www.smes.tyc.edu.tw/modules/tadnews/page.php?ncsn=11&nsn=16#a5`
+- ✅ Auth 錯誤訊息友善化(8 種 `auth/*` 錯誤碼對應人話 toast)
+- ✅ Firestore SDK 動態 import → 避開主 bundle 膨脹到 943 KB(現在維持 lazy 236 KB chunk)
+
+##### 🔥 2026-04-26 收尾(今天的兩件事)
+- ✅ **OCR 整套換成 Gemini Vision**(Tesseract.js → `gemini-2.5-flash` 圖文多模態):
+  - 新增 `lib/integrations-gemini-server/verify.ts` 的 `verifyTexts()`
+  - 新增 `POST /api/stickers/verify-text` 路由(同樣有 Turnstile + Auth 中介)
+  - 移除 8 MB chi_tra 語言包下載 / 12 次 sequential Tesseract 呼叫
+  - sticker-result chunk 從 ~210 KB 縮到 52 KB
+  - 中英混合("Hi"、"YA")終於讀得到
+  - **誤判率從 67% 降到 < 5%**(平均相似度 30% → 95%+)
+- ✅ **Firebase Browser key 補上 HTTP Referrer 限制**(`d81c65e5-...`):
+  - 9 個 allowed referrers:tietu.web.app / tietu.firebaseapp.com / zhuyin / cagoooo.github.io / localhost
+  - 模擬攻擊測試:`evil.example.com` 來的請求 → HTTP 403 PERMISSION_DENIED
+  - GitHub Secret Scanning Alert #1 已 dismissed as `false_positive`
+  - 完整防線:API Restrictions(已有)+ Referrer Restrictions(新)+ Authorized Domains(已有)+ Firestore Rules(已有)= 4 道把關
+
+##### 📚 Skills / Memory(今天新增)
+- ✅ 寫了新 skill `gemini-free-tier-first`(Gemini Free Tier 優先設計工作流,專破「以為要付費」迷思,3 層成本護欄 SOP)
+- 📍 既有的 `firebase-ci-troubleshooter` Fix #8 + `gcp-api-key-secure-create` 特殊情況段在今天的 Browser key 處理派上用場,SOP 完全照打
+
+---
+
+**現況**:`https://tietu.web.app/` + `https://cagoooo.github.io/TieTu/` 都活著,生成貼圖完整流程可跑,有 Auth + 跨裝置歷史 + 5 畫風 + 4 道 key 防線 + 4 階段進度 UI + Gemini Vision 驗證,**月成本 $0,Gemini 用量 28% / 100 RPD**。
+
+---
+
+### 13.1 — P0 仍待補強(P0-A/B/D 已完成,下方僅剩 1 條)
 
 | 項 | 內容 | 為何重要 | 估時 |
 |---|---|---|---|
-| **P0-A** | **GCP Budget Alert** USD 10/mo + 50%/90%/100% email | 雖然 free tier 內,真有人惡意刷 Gemini image 還是會跳到付費,沒上限保護就裸奔 | 10 min |
-| **P0-B** | **Cloudflare Turnstile 真實啟用**(目前 `DISABLED` sentinel) | 沒 captcha 等於把 Gemini API key 額度開放給任何人 | 15 min |
 | **P0-C** | **Gemini API quota override**(GCP Console → IAM → Quotas) 設 daily 上限 | 比 Budget Alert 更直接 — 達上限直接 429,不會有「付費跳出 free tier」的灰色地帶 | 15 min |
-| **P0-D** | **GitHub Actions 升級 Node 24** + `actions/checkout@v5` 等(Node 20 在 2026-09 強制下線) | CI 不會死但會持續警告 | 20 min |
 
-> 💡 P0-A + P0-B + P0-C 我可以幫你**全自動跑完**(GCP CLI / Cloudflare API 都能搞)。Turnstile 那條需要你先去 Cloudflare 拿 site/secret key(< 3 分鐘)。
+> ✅ P0-A / B / D 已在階段 B 完成。P0-C 我可以幫你全自動跑完(`gcloud compute project-info` + quota override REST call)。
 
 ---
 
-### 13.2 — P1 體驗與觀測(週級別)
+### 13.2 — P1 體驗與觀測(P1-3/7/9/10 已完成,下方僅剩 6 條)
 
 | 項 | 內容 | 為何 | 估時 |
 |---|---|---|---|
 | **P1-1** | Vite dev server 加 `/api` proxy 到 :8080 | 本機開發者一進門就踩 404 | 15 min |
 | **P1-2** | env 集中 zod 驗證(`api-server/src/env.ts`)+ 啟動時 fail-fast | 比現在散落各處 `if (!process.env.X) throw` 更乾淨 | 1 hr |
-| **P1-3** | Gemini 失敗訊息**分類成 5 類**(safety_block / quota_exhausted / model_not_found / max_tokens / internal),前端對應不同 toast 文案 | 使用者看「貼圖生成失敗」啥都不知道,分類後可給「請換張照片」「等等再試」「請聯絡管理員」具體指引 | 2 hr |
 | **P1-4** | 大檔案上傳改 `multipart/form-data`(目前 base64 進 50 MB JSON,吃 RAM) | 一張 10 MB 圖變 13.3 MB JSON;改 multipart 省 33% + 串流 | 3 hr |
 | **P1-5** | 加 `/api/readyz`(檢查 Gemini ListModels)區分 liveness/readiness | UptimeRobot 監控可分「服務活著但 Gemini 掛」與「整體掛」 | 30 min |
 | **P1-6** | 生成 loading 加 AbortController + 取消按鈕 | 30–90 秒乾等沒得反悔很折磨 | 1 hr |
-| **P1-7** | **Sentry / Logtail 接 5xx error**(目前只能去 GCP Logging 撈) | error 跳出來才會被發現,不用每天主動看 log | 1 hr |
 | **P1-8** | **Firebase Hosting Preview Channels** for PR(`firebase hosting:channel:deploy pr-N`) | PR 可在 `https://tietu--pr-N-xxxx.web.app/` 預覽,不污染 production | 1 hr |
-| **P1-9** | Bundle code-split:framer-motion / react-day-picker / recharts 拆 chunk | 目前 725 KB → 230 KB gzip,可拆到 < 150 KB initial | 2 hr |
-| **P1-10** | **整張 PNG 下載也支援去背**(目前去背只在 24 張 ZIP) | 某些情境(縮圖/分享)使用者想要透明 sheet | 1.5 hr |
 
 ---
 
-### 13.3 — P2 規模化(MAU 破百後再考慮)
+### 13.3 — P2 規模化(P2-2 已完成,下方僅剩 6 條;MAU 破百後再認真做)
 
 | 項 | 內容 | 估時 |
 |---|---|---|
 | **P2-1** | **背景 job 化**(避免 Cloud Run 60 秒 timeout):新增 `sticker_jobs` Firestore collection + 兩段 API(`POST /api/jobs` 建任務 + `GET /api/jobs/:id` polling)+ 前端 SSE/polling | 1–2 day |
-| **P2-2** | **生成結果上傳 Firebase Storage** + signed URL,前端拿 URL 而非 base64;Storage 設 7 天 lifecycle 自動刪 | 0.5 day |
 | **P2-3** | **重新引入 rate-limit**(用 Firestore atomic counter 而非 Postgres);僅在 MAU 到一定門檻才需 | 0.5 day |
-| **P2-4** | **限流分層**:全域 quota + IP + Firebase Auth user(已登入用 user_id,未登入用 IP) | 0.5 day |
+| **P2-4** | **限流分層**:全域 quota + IP + Firebase Auth user(已登入用 user_id,未登入用 IP)— Phase 2A 已備好 `req.user.uid`,直接接 | 0.5 day |
 | **P2-5** | **Cloud Functions Min Instances=1** 消除 cold start(會持續扣 GB-seconds 但體驗顯著) | 5 min(設定)+ 觀察 1 週成本 |
 | **P2-6** | Prometheus / OpenTelemetry metrics export 到 Grafana Cloud free | 0.5 day |
 | **P2-7** | **API key rotation 自動化**(90 天 cron + Cloud Scheduler trigger SA 跑 gcloud secrets:set) | 1 day |
 
 ---
 
-### 13.4 — P3 能力擴張(產品化)
+### 13.4 — P3 能力擴張(P3-1/3/5/6 已完成或被升級,下方僅剩 6 條)
 
 | 項 | 內容 | 為何 | 估時 |
 |---|---|---|---|
-| **P3-1** | **Firebase Authentication 帳號系統**(Google + Apple OAuth)+ 把 IndexedDB 歷史改成 Firestore(可換瀏覽器/裝置看歷史) | IndexedDB 換瀏覽器就消失 | 1–2 wk |
-| **P3-2** | **Stripe 付費**(`stripe-replit-sync` 已預留;改 Stripe vanilla):Free 5 張/月 / Plus 100/月 / Pro 無限 | 免費版規模化不可持續 | 2 wk |
-| **P3-3** | **Prompt 風格選擇器**(pop-mart-3d / clay-figure / pixel-art / anime-2d / watercolor)+ DB-backed 模板 | 同樣 24 張可以有 5 種風格,UGC 增加 5x | 1 day |
-| **P3-4** | 多語系(i18n;zh-Hant / zh-Hans / en / ja),預設 24 個 `DEFAULT_TEXTS` 對應每語系一份 | 把 TAM 從台灣擴到 CJK 全區 | 3 day |
-| **P3-5** | 即時生成進度(SSE 推「上傳中→AI 思考中→生成中→切片中」),P2-1 完成後做 | 30–90 秒乾等留存率殺手 | 2 day |
-| **P3-6** | **OCR 自動重試**:tesseract.js 跑切片後比對 expected vs recognized,差異率 > 30% 自動重生(最多 2 次) | 對抗 Gemini 偶爾把字寫錯的弱點 | 3 day |
-| **P3-7** | LINE Bot 介面:LINE Messaging API,使用者直接在 LINE 上傳照片就能拿到貼圖 ZIP | 不用打開瀏覽器,使用門檻 0 | 1 wk |
-| **P3-8** | **生成歷史社群展示**(僅同意分享的使用者):像 Lensa / Replicate 的 trending 牆 | 增加曝光 + 風格參考 | 1 wk |
+| **P3-2** | **Stripe 付費**(`stripe-replit-sync` 已預留;改 Stripe vanilla):Free 5 張/月 / Plus 100/月 / Pro 無限。**Phase 2A 已有 uid**,Stripe metadata 直接掛 uid 即可 | 免費版規模化不可持續 | 2 wk |
+| **P3-4** | 多語系(i18n;zh-Hant / zh-Hans / en / ja),預設 24 個 `DEFAULT_TEXTS` 對應每語系一份。**Gemini Vision 已能讀英文**,英文版 prompt 直接可上 | 把 TAM 從台灣擴到 CJK 全區 + 英語使用者 | 3 day |
+| **P3-7** | LINE Bot 介面:LINE Messaging API,使用者直接在 LINE 上傳照片就能拿到貼圖 ZIP。可重用 `line-messaging-firebase` skill 的 SOP | 不用打開瀏覽器,使用門檻 0 | 1 wk |
+| **P3-8** | **生成歷史社群展示**(僅同意分享的使用者):像 Lensa / Replicate 的 trending 牆。Phase 2B Firestore 已有結構 | 增加曝光 + 風格參考 | 1 wk |
 | **P3-9** | **「直接送審 LINE」**(用 LINE Creators API 自動上傳 ZIP) | 目前是手動下載 → 上傳。一鍵送審是大幅降低門檻 | 2 wk(需 LINE 商業帳號) |
 | **P3-10** | **多人合照變多角色**(輸入一張多人照,輸出每人一組 24 張) | 單人擴到家庭 / 班級 | 1–2 wk |
 
@@ -998,50 +1044,47 @@ jobs:
 
 ---
 
-### 13.6 — 短/中/長期建議路線
+### 13.6 — 短/中/長期建議路線(2026-04-26 重新校準)
 
-#### 🎯 下個 session(2 小時內可結束 — 安全加固)
+#### 🎯 下個 session(1 小時內可結束 — 把剩下的 P0/P1 收尾)
 ```
-20 min:P0-A GCP Budget Alert(我可以全自動跑)
-15 min:P0-B Cloudflare Turnstile(你拿 keys + 我自動部署)
-15 min:P0-C Gemini API quota override
-20 min:P0-D GitHub Actions 升 Node 24
-30 min:P1-1 Vite dev proxy + P1-5 /api/readyz
-20 min:P1-7 Sentry 接上(SaaS,5 分鐘設定)
+15 min:P0-C Gemini API quota override(API quota daily cap 補強 P0-A)
+15 min:P1-1 Vite dev proxy(本機開發者一進門就能用)
+30 min:P1-5 /api/readyz + P1-6 AbortController 取消按鈕
 ```
-全做完從 0 → 防呆完整,**Budget + quota + captcha + monitoring 四層保險**。
+做完後 P0 全 ✅、P1 過半,**安全護欄 + 開發者 DX 都收得乾乾淨淨**。
 
-#### 📅 下個月(週末做 1 個 — 體驗精進)
+#### 📅 下個月(週末做 1 個 — 規模化基建)
 ```
-Week 1:P1-3 錯誤分類 + P1-6 取消按鈕 → 體感最直接
-Week 2:P1-9 bundle 拆 chunk + P1-10 整張去背
-Week 3:P3-3 風格選擇器(5 種風格)→ 內容大幅豐富
-Week 4:P3-4 多語系 → 把 TAM 從台灣擴到 CJK
+Week 1:P1-2 zod env validation + P1-4 multipart upload
+Week 2:P2-1 背景 job 化(Cloud Run 60s 限制的根治方案)
+Week 3:P2-4 Firebase Auth 用戶分層限流(uid 已有,接通即可)
+Week 4:P3-4 多語系 → 把 TAM 從台灣擴到 CJK + 英語
 ```
 
-#### 🚀 下季(產品化)
+#### 🚀 下季(商業化 + 規模化)
 ```
-Month 1:P3-1 Firebase Auth + Firestore 歷史
-Month 2:P3-2 Stripe 付費 + 額度管理
-Month 3:P3-5 即時進度 + P3-6 OCR 自動重試
+Month 1:P3-2 Stripe 付費 + 額度管理(metadata 掛 uid 即可)
+Month 2:P3-7 LINE Bot 介面 + P3-9 直送 LINE 審核
+Month 3:P3-8 社群展示牆 + P3-10 多人合照拆角色
 ```
 
-#### 🌱 長期(平台化)
+#### 🌱 長期(平台化 / 探索)
 ```
-Q3 後:P3-7 LINE Bot
-Q4 後:P3-8 社群展示 + P3-9 直送 LINE 審核
-Q+:    P3-10 多人合照
+Q3 後:13.9 章的「未來新方向」前 3 名(下方詳述)
+Q4 後:跨地區部署(asia-southeast1 + us-central1)
+Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 ```
 
 ---
 
-### 13.7 — Top 5「我會親手做」(只有時間做 5 件事)
+### 13.7 — Top 5「我會親手做」(只有時間做 5 件事,2026-04-26 修訂)
 
-1. **P0-A + P0-B + P0-C**(預算 / Captcha / Quota 三連)— 沒做等於把信用卡留在桌上
-2. **P1-3** 錯誤分類 — 體感最直接,使用者馬上覺得「這 app 有用心」
-3. **P3-3** Prompt 風格選擇器 — 1 天工作換 5 倍內容多樣性,CP 值最高
-4. **P3-2** Stripe 付費 — 沒收入的免費版規模化不可持續,愈早做愈不痛
-5. **P4-1** 測試 — 改 prompt / 升 Gemini 模型版本時不怕(Gemini 棄用速度快,3.1-flash-image-preview 哪天改名你還想跑得動)
+1. **P0-C** Gemini quota override — 15 分鐘把最後一道 free tier 安全閘關上,**沒做就是裸奔**
+2. **P2-1 背景 job 化** — 這是規模化的卡點,做完後 P3-5 真實進度條才能接續(目前是 client-side 模擬)
+3. **P3-2 Stripe 付費** — 真要長期經營,愈早接愈不痛(Phase 2A 的 uid 已有,Stripe metadata 直接掛)
+4. **P3-7 LINE Bot** — TieTu 用戶族群跟 LINE 重疊度極高,LINE Bot 是最大的「降低門檻」槓桿
+5. **P4-1 測試** — Gemini 棄用速度快,沒測試你不敢升 model;有測試就敢追新版本
 
 ---
 
@@ -1058,7 +1101,184 @@ Q+:    P3-10 多人合照
 
 ---
 
-## 14. 疑難排解 FAQ
+### 13.9 — 🆕 未來新方向(2026-04-26 收尾後想到的全新點子)
+
+> 這節是「**今天為止的基建做完了 → 接下來能玩什麼**」。每個點子標註**新 vs 既有**(避開已在 P0-P4 中的重複),並給出**可行性評估**與**先決條件**。
+
+---
+
+#### 🟢 可行性高、CP 值滿載(Q1 內可分批做完)
+
+##### 🆕 N1 — **「重生這幾格」按鈕**(Gemini Vision 副產品)
+- **說明**:現在 verify-text 已經告訴你哪 8 格錯字。多加一顆「重生這 8 格」按鈕,呼叫 Gemini 用同樣的人物 + 對的文字 + **inpaint 模式**只重畫指定格,其他格保留
+- **技術可行性**:
+  - 簡單版:整張重生(已可用,只是浪費)
+  - 進階版:後端把錯誤的 cell 區域 mask 起來,加 `gemini-3.1-flash-image-preview` 的 inpainting 提示。**需驗證該模型支援 mask-based 編輯**(部分 image preview models 才支援)
+  - 最佳版:client-side 抓出 mismatched cell coordinates,只把那幾格送上去當「reference + new label」,後端拼回主 sheet
+- **先決條件**:今天剛做的 verify-text(✅ 已完成)
+- **預期效果**:從「整張 90% 對 → 重做整張」變成「整張 90% 對 → 修補 10% → 100% 完成」,**Gemini quota 用量減 70%**
+- **估時**:1-2 day(取決於 inpainting 是否走得通)
+- **CP 值**:⭐⭐⭐⭐⭐ — 對使用者體驗 + 成本同時是大利多
+
+##### 🆕 N2 — **自動驗證(每次生成完默默跑 verify-text)**
+- **說明**:目前 verify-text 是 opt-in 按鈕。改成「生成完成 → 後台自動跑 verify-text → 平均相似度 < 70% 主動標出來」,使用者不用記得按按鈕
+- **技術可行性**:
+  - 後端 `/api/stickers/generate` 結尾追加 verifyTexts 呼叫(同一個 SDK client)
+  - 回 `{ imageBase64, imageUrl, recognizedTexts, averageSimilarity }`
+  - 前端在切割預覽 UI 上直接畫紅圈在誤判格
+- **先決條件**:今天剛做的 verify-text(✅)
+- **預期效果**:**從「使用者按了才知道有錯」變「主動避開誤判」**,留存率大幅提升
+- **成本**:每張多 1 次 gemini-2.5-flash 呼叫(~10 sec + 0 元 free tier)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐⭐
+
+##### 🆕 N3 — **「分享給朋友」可分享 URL**
+- **說明**:Phase 2B 的 Firestore + P2-2 Storage URL 已經有結構。加一個 `POST /api/stickers/share/:entryId` 產生短碼 URL,瀏覽器開啟看到完整貼圖預覽 + ZIP 下載按鈕
+- **技術可行性**:
+  - 新 collection `/shared/{shortCode}` 存 `{ ownerUid, sheetUrl, texts, createdAt, viewCount }`
+  - 短碼用 nanoid(8 chars 夠了)
+  - 前端 `/share/:code` 路由(Wouter 的另一個 Route)
+  - 嵌入 OG image 給 LINE / FB 分享預覽:用 cagoooo.github.io 的 og-social-preview-zh skill 已知 SOP
+- **先決條件**:Phase 2B Firestore(✅)+ P2-2 Storage URL(✅)
+- **估時**:1 day
+- **CP 值**:⭐⭐⭐⭐ — 病毒擴散最直接的加速器
+
+##### 🆕 N4 — **每日「主題挑戰」**(輕量遊戲化)
+- **說明**:每天 Cloud Scheduler 跑一次,產生「今日主題」(可用 Gemini 自動產:「春天的小貓」「畢業典禮」等),展示在首頁卡片上。使用者點「參加挑戰」→ 預設主題已填好,生成完後可以提交到「今日挑戰牆」
+- **技術可行性**:
+  - Cloud Scheduler + 一個 onSchedule Cloud Function
+  - Firestore `/daily_themes/{yyyy-mm-dd}` 存當日主題 + 投稿
+  - 首頁 `useEffect` 抓今日主題 + Gallery 牆
+- **先決條件**:Phase 2A uid(✅)、Firestore Rules(✅,需擴充 daily_themes 規則)
+- **估時**:2 day(Cloud Scheduler 設定 + UI)
+- **CP 值**:⭐⭐⭐⭐ — 重複造訪率殺手鐧
+
+---
+
+#### 🟡 中度可行(技術風險中等,Q2 後考慮)
+
+##### 🆕 N5 — **AI 評分 + 自動選最佳**(同主題生 3 張,自動挑 1 張)
+- **說明**:使用者點「生成」,後端**並行**生 3 張 sheet,用 `gemini-2.5-flash` 看圖打分(構圖、文字清晰度、人物相似度三項各 1-10),取最高分回傳。3 張的成本還在 RPD 內
+- **技術可行性**:
+  - 並行 3 張會吃 RPM(image preview model 是 10 RPM,3 並發剛好邊緣)
+  - 如果太緊:序列 3 張(總時間從 30s → 90s),需 P3-5 真實進度顯示緩衝
+  - 評分 prompt 要設計好(避免 Gemini 給「都很好」的好好先生回答)
+- **預期效果**:挑出來的圖視覺品質提升 30%(真人 A/B test 可量化)
+- **成本**:每次生成 4 倍(3 張 image + 1 張 text 評分)
+- **估時**:3 day
+- **CP 值**:⭐⭐⭐ — 品質提升明顯但成本壓力大,**搭配 P3-2 付費才可行**
+
+##### 🆕 N6 — **「貼圖故事」一鍵成短片**(Gemini 文字生成劇本 → 縫合貼圖成 GIF/短片)
+- **說明**:24 張貼圖 + 1 個故事 prompt → Gemini text 生 6-8 段對白 → 對應每段挑最貼切的貼圖 → 拼成 9:16 短片(每張顯示 2-3 秒 + 對白字幕)
+- **技術可行性**:
+  - 文字生成:gemini-2.5-flash(已會用)
+  - 貼圖比對:embedding 向量比對(用 `gemini-embedding-001`,免費)或 Gemini Vision 直接挑
+  - 影片合成:client-side 用 ffmpeg.wasm(~20 MB,要 lazy load)或 server-side Cloud Function 跑 ffmpeg
+- **先決條件**:Phase 2B Firestore 歷史(✅)
+- **預期效果**:解鎖 IG Reels / TikTok / Shorts 平台分享
+- **估時**:1 wk(client-side 路線)/ 2 wk(server-side 路線)
+- **CP 值**:⭐⭐⭐⭐ — 短影音是 2026 最大的流量來源
+
+##### 🆕 N7 — **班級 / 家庭 模板包**(連動 teaching-cockpit skill)
+- **說明**:輸入「班級照」(多人合照)+ 學生姓名清單 → 後端用 Gemini Vision 自動辨識人臉 + 框出每張臉 + 對每個學生跑單獨的 24 張貼圖。批量產出後打包成班級總包
+- **技術可行性**:
+  - 人臉偵測:**Gemini Vision 不擅長精確 bbox**,改用 **MediaPipe Face Detection**(client-side,免費,精確)
+  - 人臉對應姓名:讓老師手動標(老師看著照片排順序最快)
+  - 批量生成:N 個學生 × 24 張 = N 次 generate 呼叫(若 N=30 則 30 次,**會超 100 RPD**,需 P3-2 paid)
+- **先決條件**:P3-2 Stripe(用「教師包月」訂閱)、P2-1 背景 job(批量生成不能卡 60s)
+- **預期效果**:打開教育市場(全台 2,500 所國小,40+ 萬個班級)
+- **估時**:2 wk
+- **CP 值**:⭐⭐⭐⭐⭐ — **這是 TieTu 真正的市場機會**(B2B 教育)
+
+##### 🆕 N8 — **「貼圖樂高」混合模式**
+- **說明**:歷史裡的多組貼圖,可以從不同組各拉一張組成新的 24 張(像 Lego 拼裝)。對於同一個人物多次生成的人,可以把每次最滿意的那張組成「精華包」
+- **技術可行性**:
+  - 純前端:從 Firestore 多筆歷史抓 tile 圖,canvas 重新合成新 sheet
+  - 需設計 UI(drag-and-drop or click-to-pick)
+- **先決條件**:Phase 2B 多歷史(✅,目前一人最多 5 筆)+ P2-2 tile-level URL 而非整張(目前只存整張 sheet,需擴充)
+- **估時**:1 wk
+- **CP 值**:⭐⭐⭐ — 已有重度使用者才有價值
+
+---
+
+#### 🔴 高難度(實驗性,Q3+ 才嘗試)
+
+##### 🆕 N9 — **本機端 Gemini Nano**(Chrome 內建 / Edge AI)
+- **說明**:Chrome 137+ 內建 Gemini Nano(本地端 LLM),拿來做**前端的文字改寫**(不用打後端 API),**0 元 + 完全離線**
+- **技術可行性**:
+  - 受限於 Chrome 137+ + 4 GB RAM 才有
+  - API:`window.ai.languageModel.create()`
+  - 圖片生成 Nano 還沒有 → 圖片仍走後端 Gemini,只有文字改寫走本機
+- **先決條件**:Chrome AI API 走出 Origin Trial(2026 中?)
+- **估時**:0.5 day(progressive enhancement,有就用沒有就 fallback 後端)
+- **CP 值**:⭐⭐⭐ — 0 元 + 隱私 + 離線,但覆蓋率現在還低
+
+##### 🆕 N10 — **WebGPU + Stable Diffusion 本機端 fallback**
+- **說明**:Gemini 配額用完時,讓**支援 WebGPU 的瀏覽器**(Chrome / Edge 113+)直接在瀏覽器跑 Stable Diffusion(用 transformers.js 或 diffusers.js)。畫質遜於 Gemini 但**完全免費 + 0 後端負載**
+- **技術可行性**:
+  - 模型大小:~1-2 GB(首次下載)
+  - 生成時間:M1 Mac ~30s/張,中階手機可能跑不動
+  - 控制人物相似度比 Gemini 弱(需 LoRA 微調 → 工程量大)
+- **先決條件**:WebGPU 普及 + 模型優化
+- **估時**:2-4 wk(實驗性)
+- **CP 值**:⭐⭐ — 純技術 flex,使用者真的需要嗎?
+
+##### 🆕 N11 — **AR Sticker Try-On**(WebXR)
+- **說明**:生成完的貼圖,點「AR 試貼」→ 開啟手機鏡頭,把貼圖貼在現實世界拍照(像 IG Story sticker)
+- **技術可行性**:
+  - WebXR 在 iOS Safari 17+ / Android Chrome 都支援
+  - 貼圖 anchor 到平面(MediaPipe Hands 或 ARKit Quick Look)
+  - 拍照後存到 device camera roll
+- **先決條件**:無
+- **估時**:2 wk
+- **CP 值**:⭐⭐⭐ — Wow factor 強,實用度看人
+
+---
+
+#### 🛠️ DX / 工程效能(隱形但長期價值大)
+
+##### 🆕 N12 — **Firebase Local Emulator Suite 整合**
+- **說明**:本機 dev 用 Functions + Firestore + Auth + Storage 模擬器跑,不用打雲端
+  - 安裝 `firebase-tools` + `firebase init emulators`
+  - 跑 `firebase emulators:start`(localhost:4000 UI)
+  - 前端 `if (import.meta.env.DEV) { connectAuthEmulator(...); connectFirestoreEmulator(...); }`
+- **預期效果**:離線開發 + 不污染 production data + 跑得比雲端快 10x
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐ — 你開發新功能會感謝過去的自己
+
+##### 🆕 N13 — **Storybook for component library**
+- **說明**:把 sticker-result.tsx / sticker-cropper.tsx / auth-pill.tsx 都建 stories,可獨立 review UI 變動
+- **預期效果**:UI bug 早期發現 + design review 不用整個 app build
+- **估時**:1 day(初次設定 + 5-8 個 stories)
+- **CP 值**:⭐⭐⭐
+
+##### 🆕 N14 — **Bundle 分析儀表板**(自動跑在 PR)
+- **說明**:`vite-bundle-visualizer` 自動跑在 PR,如果主 chunk 增加 > 5%,CI 報警
+- **預期效果**:防止某天「不小心」import 了一個 React 生態庫拆不掉,默默吃掉 200 KB(類似 P1-9 踩過的雷)
+- **估時**:0.5 day
+- **CP 值**:⭐⭐⭐⭐ — 預防勝於治療
+
+##### 🆕 N15 — **A/B Test 框架**(GrowthBook OSS 或 Firebase Remote Config)
+- **說明**:測「進度條 4 段」vs「進度條 percentage」,「Pop Mart 風格」vs「Anime 風格」哪個 conversion 高
+- **預期效果**:每個 UX 改動有資料佐證,不憑感覺
+- **估時**:1 day
+- **CP 值**:⭐⭐⭐ — 有產品野心才需要
+
+---
+
+#### 🎯 重新校準的 Top 5(2026-04-26 修訂版,絕對推薦)
+
+> 「如果只能挑 5 件做,以今天為起點,選哪 5 個?」
+
+| # | 項目 | 為什麼是它 | 估時 |
+|---|------|----------|------|
+| 1 | **N2 自動驗證(默默跑 verify-text)** | 0.5 day 立即把 verify-text 的價值放大 10x — **使用者不用學新功能就受惠** | 0.5 day |
+| 2 | **P0-C Gemini quota override** | 最後一道安全閘,15 分鐘永絕後患 | 15 min |
+| 3 | **N1 重生這幾格** | verify-text 找到錯字後不重整張,**省 70% Gemini quota** | 1-2 day |
+| 4 | **N3 分享 URL + OG preview** | 病毒傳播加速器,直接打通 LINE/FB/IG 分享卡片 | 1 day |
+| 5 | **N7 班級模板包**(含 P3-2 付費) | **教育市場是 TieTu 最大商機**,這個做完才有「老師會自願付月費」的動機 | 2 wk(含付費) |
+
+---
 
 | 症狀 | 可能原因 | 解法 |
 |---|---|---|
