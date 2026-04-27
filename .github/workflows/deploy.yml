@@ -69,12 +69,17 @@ jobs:
       # touch other Firebase projects' resources. We restrict to:
       #   - hosting:tietu       (only the "tietu" hosting target)
       #   - functions:tietu     (only the "tietu" codebase declared in firebase.json)
+      #   - firestore:rules     (project-level shared file; safe because TieTu
+      #                           rules are scoped to /users/{uid}/tietu_history
+      #                           and /shared/{shortCode}, neither of which
+      #                           Zhuyin uses, and the catch-all denies by
+      #                           default so we never broaden access)
       # This guards against accidentally deleting other apps' Cloud Functions
       # (notably: the existing Zhuyin app in this same Firebase project).
       - name: Deploy to Firebase
         run: |
           npx --yes firebase-tools@15 deploy \
-            --only "hosting:tietu,functions:tietu" \
+            --only "hosting:tietu,functions:tietu,firestore:rules" \
             --project ${{ secrets.FIREBASE_PROJECT_ID }} \
             --force \
             --non-interactive
