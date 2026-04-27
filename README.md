@@ -1313,6 +1313,7 @@ Q+:    自架 GPU 推論 / Cloud Run + Volumes 實驗
 | 前端送請求都 404 | Vite dev server 沒 proxy | 加 `server.proxy['/api']`(§5) |
 | 上傳 HEIC 後拋「無法辨識的影像格式」 | magic bytes 對不上罕見 sub-brand | 轉 JPG;或在 `detectMimeFromMagicBytes` 多加 brand |
 | **iPhone 上傳照片預覽顯示破圖示+「預覽」alt 文字** | **HEIC 是 iPhone 預設格式,Chrome / Firefox / Edge 都不能用 `<img>` 渲染 HEIC,只有 Safari 可以**。後端 magic-byte 偵測吃 HEIC 沒問題,生成完全正常 — 只是預覽看不到 | **已在 sticker-generator.tsx 修好(2026-04-27):`isUnpreviewableFormat()` 主動偵測 HEIC/HEIF + `<img onError>` 補網,降級到顯示檔名/大小 + 「上傳生成沒問題!」橘色資訊卡。其他客戶端遇到一樣問題請套這個 pattern,別嘗試 heic2any 整合(套件 ~500 KB,不划算)** |
+| **上傳 HEIC 後生成回 HTTP 400「照片內容不是有效的 Base64 字串」** | **後端 `decodePhoto()` 的舊 regex 只接受 `image/(png\|jpeg\|webp\|heic\|heif)` 5 種 MIME**。但 Chrome / Edge 對 HEIC 不認識時 `file.type` 是空字串,FileReader 產出 `data:application/octet-stream;base64,...`,regex miss → 整個 data URL 被當 base64 → 含冒號分號 → fail。**真正的格式判斷由 magic-byte sniffer 做**,前端 MIME 不該決定生死 | **已在 stickers.ts 修好(2026-04-27):regex 放寬成 `/^data:[^,]*;base64,(.+)$/i` 接受任何 MIME(含空 / `application/octet-stream`),由 `detectMimeFromMagicBytes()` 偵測真實格式。教訓:**前端 MIME 是「提示」不是「真相」**,後端永遠用 magic-byte 判斷實際格式 |
 | `pnpm install` 卡很久 | `minimumReleaseAge: 1440` 在驗證 | 預期行為,首次裝會慢 |
 | Build 抓不到平台二進位 | `pnpm-workspace.yaml` 平台 override 太嚴 | 刪除 overrides(§12.2.A) |
 | `firebase deploy` 失敗:Functions deploy requires Blaze | 還在 Spark | 升 Blaze |

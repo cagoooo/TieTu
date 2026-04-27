@@ -75,13 +75,20 @@ function detectMimeFromMagicBytes(buffer: Buffer): string | null {
 
 function decodePhoto(input: string): DecodedImage {
   const trimmed = input.trim();
-  const dataUrlMatch = trimmed.match(
-    /^data:(image\/(png|jpeg|jpg|webp|heic|heif));base64,(.+)$/i,
-  );
+  // Strip ANY data URL prefix (image/png, image/heic, application/octet-stream
+  // when the browser couldn't identify HEIC, even an empty MIME). We
+  // deliberately don't gate on the MIME advertised in the data URL because
+  // browsers lie / give up on uncommon formats — magic-byte sniffing below
+  // is the source of truth for the actual format. Real-world bug fixed
+  // 2026-04-27: iPhone HEIC photos came in as
+  //   "data:application/octet-stream;base64,..." on certain Chrome/Edge
+  //   builds, the old strict regex rejected them with HTTP 400 even though
+  //   detectMimeFromMagicBytes() handles HEIC just fine.
+  const dataUrlMatch = trimmed.match(/^data:[^,]*;base64,(.+)$/i);
 
   let base64 = trimmed;
   if (dataUrlMatch) {
-    base64 = dataUrlMatch[3];
+    base64 = dataUrlMatch[1];
   }
 
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64.replace(/\s+/g, ""))) {
