@@ -9,6 +9,7 @@ import {
 } from "@workspace/integrations-gemini-server/image";
 import { rewriteTexts } from "@workspace/integrations-gemini-server/text";
 import { verifyTexts } from "@workspace/integrations-gemini-server/verify";
+import { notifyAdmin } from "@workspace/integrations-line-server/notify";
 import { logger } from "../lib/logger";
 import { tryUploadSheetPng } from "../lib/storage";
 import { attachFirebaseUser, getRequestUser } from "../lib/auth-middleware";
@@ -257,6 +258,22 @@ router.post(
       // home.tsx (the auto-generated zod schema doesn't yet know about
       // it; deliberately not running orval codegen for one optional field).
       res.json(imageUrl ? { ...parsedPayload, imageUrl } : parsedPayload);
+
+      // 🔔 Fire-and-forget admin LINE notification — must NOT delay the user
+      // response. We void the promise so unhandled rejections from the LINE
+      // API don't crash the function (notifyAdmin already swallows errors,
+      // but defence in depth).
+      void notifyAdmin(
+        {
+          kind: "generate_success",
+          theme: theme ?? null,
+          styleId,
+          uid: authedUser?.uid ?? null,
+          email: authedUser?.email ?? null,
+          imageUrl: imageUrl ?? undefined,
+        },
+        logger,
+      );
     } catch (err) {
       if (err instanceof StickerGenerationError) {
         logger.warn(
@@ -267,6 +284,21 @@ router.post(
           error: err.userMessage,
           code: err.code,
         });
+        // Notify admin of the classified failure so they can spot patterns
+        // (e.g. quota_exhausted spike, repeated safety_block from same uid).
+        const authedUser = getRequestUser(req);
+        void notifyAdmin(
+          {
+            kind: "generate_failure",
+            theme: theme ?? null,
+            styleId,
+            uid: authedUser?.uid ?? null,
+            email: authedUser?.email ?? null,
+            errorCode: err.code,
+            errorMessage: err.userMessage,
+          },
+          logger,
+        );
         return;
       }
       logger.error({ err }, "Sticker generation failed (unclassified)");
@@ -276,6 +308,21 @@ router.post(
         error: `貼圖生成失敗：${message}`,
         code: "internal",
       });
+      // Unclassified failures get tagged "internal" — useful to know
+      // immediately when something we don't have a code for breaks.
+      const authedUser = getRequestUser(req);
+      void notifyAdmin(
+        {
+          kind: "generate_failure",
+          theme: theme ?? null,
+          styleId,
+          uid: authedUser?.uid ?? null,
+          email: authedUser?.email ?? null,
+          errorCode: "internal",
+          errorMessage: message,
+        },
+        logger,
+      );
     }
   },
 );

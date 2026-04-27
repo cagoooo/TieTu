@@ -1,0 +1,14 @@
+{
+  "name": "@workspace/integrations-line-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./notify": "./src/notify.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

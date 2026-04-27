@@ -16,6 +16,7 @@
     "@google-cloud/storage": "^7.16.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/integrations-gemini-server": "workspace:*",
+    "@workspace/integrations-line-server": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "express": "^5",

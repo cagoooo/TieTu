@@ -96,6 +96,9 @@ importers:
       '@workspace/integrations-gemini-server':
         specifier: workspace:*
         version: link:../../lib/integrations-gemini-server
+      '@workspace/integrations-line-server':
+        specifier: workspace:*
+        version: link:../../lib/integrations-line-server
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -609,6 +612,12 @@ importers:
       '@google/genai':
         specifier: ^1.50.1
         version: 1.50.1
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.3.5
+
+  lib/integrations-line-server:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

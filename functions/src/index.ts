@@ -22,6 +22,13 @@ const TIETU_TURNSTILE_SECRET_KEY = defineSecret("TIETU_TURNSTILE_SECRET_KEY");
 // and paste the DSN from sentry.io. Code below treats absence / "DISABLED"
 // the same: no init, zero overhead, no captures.
 const TIETU_SENTRY_DSN = defineSecret("TIETU_SENTRY_DSN");
+// LINE admin notifications — same "DISABLED" sentinel pattern as Sentry.
+// When both secrets hold real values, every /api/stickers/generate success
+// or failure pushes a LINE message to TIETU_LINE_ADMIN_USER_ID via the
+// channel that owns TIETU_LINE_CHANNEL_ACCESS_TOKEN. See
+// lib/integrations-line-server/notify.ts for the runtime fallback logic.
+const TIETU_LINE_CHANNEL_ACCESS_TOKEN = defineSecret("TIETU_LINE_CHANNEL_ACCESS_TOKEN");
+const TIETU_LINE_ADMIN_USER_ID = defineSecret("TIETU_LINE_ADMIN_USER_ID");
 
 let _sentryInited = false;
 function ensureSentry(): void {
@@ -73,6 +80,19 @@ async function getApp(): Promise<RequestHandler> {
     if (turnstileValue && turnstileValue !== "DISABLED") {
       process.env.TURNSTILE_SECRET_KEY = turnstileValue;
     }
+    // LINE admin notifications: same DISABLED-sentinel pattern. notifyAdmin
+    // checks both TIETU_LINE_* env vars at call time and silently skips
+    // when either is missing or "DISABLED" — so deploying without the
+    // secrets set is safe and just leaves the feature dormant until you
+    // run `firebase functions:secrets:set TIETU_LINE_*`.
+    const lineToken = TIETU_LINE_CHANNEL_ACCESS_TOKEN.value();
+    if (lineToken && lineToken !== "DISABLED") {
+      process.env.TIETU_LINE_CHANNEL_ACCESS_TOKEN = lineToken;
+    }
+    const lineAdminId = TIETU_LINE_ADMIN_USER_ID.value();
+    if (lineAdminId && lineAdminId !== "DISABLED") {
+      process.env.TIETU_LINE_ADMIN_USER_ID = lineAdminId;
+    }
     // Cloud Run sits behind two proxy hops (Google Frontend + Cloud Run sidecar).
     process.env.TRUST_PROXY = process.env.TRUST_PROXY ?? "2";
     // Hand-off bucket name to api-server's storage helper. The default GCS
@@ -112,7 +132,13 @@ export const tietu_api = onRequest(
     concurrency: 80,
     cpu: 1,
     invoker: "public",
-    secrets: [TIETU_GEMINI_API_KEY, TIETU_TURNSTILE_SECRET_KEY, TIETU_SENTRY_DSN],
+    secrets: [
+      TIETU_GEMINI_API_KEY,
+      TIETU_TURNSTILE_SECRET_KEY,
+      TIETU_SENTRY_DSN,
+      TIETU_LINE_CHANNEL_ACCESS_TOKEN,
+      TIETU_LINE_ADMIN_USER_ID,
+    ],
   },
   async (req, res) => {
     ensureSentry();
