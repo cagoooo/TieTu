@@ -66,6 +66,39 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ───────────────────────────────────────────────────────────────────────────
+   Sticker Gacha Studio — 盲盒扭蛋改版設計 token（A 盲盒包裝盒 × C 扭蛋機）
+   來源：design_handoff_gacha_redesign/prototype/ss-tokens.jsx
+
+   命名刻意 namespace（cap-* / 加上 ink/coral/cream/paper 等 Tailwind 預設沒有
+   的名字），避免覆蓋既有 pink / sky / green 等內建色階（footer 仍用 pink-400）。
+   用法：bg-coral / border-ink / text-cream / bg-cap-mint / font-display …
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-ink: #221b1c;       /* 墨黑：描邊、文字、裁切標記、條碼 */
+  --color-coral: #ff5a4d;     /* 珊瑚橘：主 CTA、品牌強調色 */
+  --color-cream: #fff6ec;     /* 奶油：盒內底色 */
+  --color-paper: #fffdf8;     /* 紙白：標籤列 / 頁尾底色 */
+
+  /* 多彩扭蛋膠囊主色 */
+  --color-cap-pink: #ff7eb6;
+  --color-cap-mint: #5fcfbe;
+  --color-cap-lemon: #ffc94d;
+  --color-cap-lilac: #b59cff;
+  --color-cap-sky: #7fc8ff;
+  --color-cap-green: #7cc36b; /* 成功 / 開盒徽章 / 去背完成 */
+
+  /* 膠囊柔色（格子底、軟背景） */
+  --color-cap-pink-soft: #ffe3ef;
+  --color-cap-mint-soft: #ddf4ef;
+  --color-cap-lemon-soft: #fff0ce;
+  --color-cap-lilac-soft: #ece5ff;
+  --color-cap-sky-soft: #e1f1ff;
+
+  /* Fredoka 圓體：標題 / 數字 / 按鈕 */
+  --font-display: 'Fredoka', 'Noto Sans TC', sans-serif;
+}
+
 /* LIGHT MODE */
 :root {
   --button-outline: rgba(0,0,0, .10);
@@ -113,7 +146,9 @@
   --chart-4: 280 70% 65%;
   --chart-5: 10 80% 65%;
 
-  --app-font-sans: 'Inter', sans-serif;
+  /* Sticker Gacha 改版：內文字體換成 Noto Sans TC（中英共用）。Inter 保留為
+     deep fallback。標題 / 數字 / 按鈕另用 .font-display（Fredoka）。 */
+  --app-font-sans: 'Noto Sans TC', 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: .5rem; /* 8px */
@@ -363,4 +398,43 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Sticker Gacha Studio — 扭蛋機 / 膠囊動畫 keyframes（來源 ss 原型 <style>）
+   以 inline style={{ animation: 'ssTumble ...' }} 套用；keyframes 為全域定義。
+   ─────────────────────────────────────────────────────────────────────────── */
+@keyframes ssTumble {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25%      { transform: translateY(-26px) rotate(-12deg); }
+  50%      { transform: translateY(-8px) rotate(8deg); }
+  75%      { transform: translateY(-20px) rotate(-4deg); }
+}
+@keyframes ssSpin   { to { transform: rotate(360deg); } }
+@keyframes ssBlink  { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes ssStripe { to { background-position: 34px 0; } }
+
+/* prefers-reduced-motion：尊重使用者偏好，關掉持續性動畫 */
+@media (prefers-reduced-motion: reduce) {
+  [style*="ssTumble"], [style*="ssSpin"], [style*="ssBlink"], [style*="ssStripe"] {
+    animation: none !important;
+  }
+}
+
+/* 盲盒改版頁面底色：奶油 + 三角柔光 radial + 點點紋理。套在 home 最外層 div。 */
+.gacha-page-bg {
+  background:
+    radial-gradient(circle at 12% 18%, #ffe3ef 0, transparent 38%),
+    radial-gradient(circle at 88% 12%, #e1f1ff 0, transparent 36%),
+    radial-gradient(circle at 80% 88%, #fff0ce 0, transparent 40%),
+    #f4eee4;
+}
+.gacha-page-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(rgba(34, 27, 28, .05) 1.4px, transparent 1.4px);
+  background-size: 22px 22px;
 }

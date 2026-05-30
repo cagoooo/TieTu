@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Heart, Upload, Brain, Wand2, Check, Loader2, Github, ExternalLink } from "lucide-react";
+import { Sparkles, Heart, Upload, Brain, Wand2, Loader2, Github, ExternalLink } from "lucide-react";
 import { StickerGenerator, type StickerGeneratorHandle } from "@/components/sticker-generator";
 import { StickerHistory } from "@/components/sticker-history";
 import { AuthPill } from "@/components/auth-pill";
+import { Carton } from "@/components/gacha/carton";
+import { GachaLoading } from "@/components/gacha/loading-machine";
 import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
@@ -67,6 +69,8 @@ export default function Home() {
   const [currentTheme, setCurrentTheme] = useState<string | null>(null);
   const [currentStyleId, setCurrentStyleId] = useState<StickerStyleId>("pop-mart-3d");
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  // 盲盒改版：把使用者上傳的大頭照（data URL）留著，loading 扭蛋機把它貼成投幣。
+  const [currentPhoto, setCurrentPhoto] = useState<string | null>(null);
   const [loadingHints, setLoadingHints] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
   const loadingStartRef = useRef<number | null>(null);
@@ -114,6 +118,7 @@ export default function Home() {
     setCurrentTexts(texts);
     setCurrentTheme(theme);
     setCurrentStyleId(style);
+    setCurrentPhoto(photoBase64); // 投幣動畫用
     setCurrentImageUrl(null); // reset until /generate returns the GCS URL
 
     // Race the result-page chunk against the 30–90s Gemini call. By the time
@@ -293,50 +298,29 @@ export default function Home() {
     }
   };
 
+  // 步驟 ribbon 綁定 AppState：投幣設定 0 / 轉動生成 1 / 開盒收圖 2。
+  const stepIndex = appState === "upload" ? 0 : appState === "loading" ? 1 : 2;
+
   return (
-    <div className="min-h-[100dvh] w-full bg-background overflow-x-hidden selection:bg-primary/20">
-      {/* Decorative background blobs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[50%] h-[50%] rounded-full bg-secondary/10 blur-3xl" />
-      </div>
-
-      <main className="relative z-10 container mx-auto px-4 py-8 md:py-12 min-h-screen flex flex-col items-center">
-        
-        <header className="w-full flex items-center justify-between mb-8 md:mb-12 gap-4">
-          {/* Spacer to keep brand centred when auth pill is wider */}
-          <div className="w-[80px] sm:w-[120px]" aria-hidden="true" />
-          <div className="flex items-center gap-2 font-bold text-2xl text-foreground">
-            <div className="w-10 h-10 bg-primary text-white rounded-2xl flex items-center justify-center rotate-3 shadow-md">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <span>貼圖工作室</span>
-          </div>
-          <div className="w-[80px] sm:w-[120px] flex justify-end">
-            <AuthPill />
-          </div>
-        </header>
-
-        <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col justify-center">
+    <div className="gacha-page-bg min-h-[100dvh] w-full overflow-x-hidden selection:bg-coral/20">
+      <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-3 py-6 sm:px-5 sm:py-10">
+        <Carton step={stepIndex} authSlot={<AuthPill />}>
           <AnimatePresence mode="wait">
             
             {appState === "upload" && (
               <motion.div
                 key="upload"
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
+                exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.3 }}
-                className="w-full space-y-10"
+                className="w-full"
               >
-                <StickerGenerator 
+                <StickerGenerator
                   ref={generatorRef}
-                  onSubmit={handleGenerate} 
-                  isPending={generateMutation.isPending} 
+                  onSubmit={handleGenerate}
+                  isPending={generateMutation.isPending}
                 />
-                <div className="max-w-4xl mx-auto w-full">
-                  <StickerHistory onOpen={handleOpenHistory} />
-                </div>
               </motion.div>
             )}
 
@@ -360,124 +344,25 @@ export default function Home() {
                 PROGRESS_CEILING,
                 Math.round(PROGRESS_CEILING * (1 - Math.pow(1 - ratio, 1.4))),
               );
-              const ActiveIcon = STAGES[activeIndex].icon;
 
               return (
                 <motion.div
                   key="loading"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.1 }}
-                  transition={{ duration: 0.4 }}
-                  className="w-full flex flex-col items-center justify-center py-12 md:py-16"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="w-full"
                 >
-                  <div className="relative w-32 h-32 mb-6">
-                    <div className="absolute inset-0 border-4 border-primary/20 rounded-full animate-ping" style={{ animationDuration: '3s' }} />
-                    <div className="absolute inset-2 border-4 border-primary/40 rounded-full animate-spin" style={{ animationDuration: '2s' }} />
-                    <div className="absolute inset-4 bg-primary rounded-full flex items-center justify-center shadow-lg animate-pulse">
-                      <AnimatePresence mode="wait">
-                        <motion.div
-                          key={STAGES[activeIndex].id}
-                          initial={{ scale: 0.6, opacity: 0, rotate: -20 }}
-                          animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                          exit={{ scale: 0.6, opacity: 0, rotate: 20 }}
-                          transition={{ duration: 0.25 }}
-                        >
-                          <ActiveIcon className="w-10 h-10 text-white" />
-                        </motion.div>
-                      </AnimatePresence>
-                    </div>
-                  </div>
-
-                  <AnimatePresence mode="wait">
-                    <motion.h2
-                      key={STAGES[activeIndex].id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ duration: 0.25 }}
-                      className="text-2xl md:text-3xl font-bold mb-1 text-foreground text-center"
-                      data-testid="loading-stage-label"
-                    >
-                      {STAGES[activeIndex].label}
-                    </motion.h2>
-                  </AnimatePresence>
-                  <p className="text-xs text-muted-foreground mb-6 tabular-nums">
-                    階段 {activeIndex + 1} / {STAGES.length} · 已過 {Math.floor(elapsedSec)} 秒
-                  </p>
-
-                  {/* Progress bar */}
-                  <div
-                    className="w-full max-w-md h-3 rounded-full bg-muted overflow-hidden mb-3 shadow-inner"
-                    role="progressbar"
-                    aria-valuenow={progressPct}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label="生成進度"
-                  >
-                    <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-primary/80 via-primary to-primary"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${progressPct}%` }}
-                      transition={{ duration: 0.4, ease: "easeOut" }}
-                      data-testid="loading-progress-bar"
-                    />
-                  </div>
-                  <p className="text-xs font-bold tabular-nums text-primary mb-6" data-testid="loading-progress-value">
-                    {progressPct}%
-                  </p>
-
-                  {/* Stage indicators */}
-                  <div className="flex items-center gap-1 sm:gap-2 mb-6 flex-wrap justify-center max-w-md">
-                    {STAGES.map((stage, idx) => {
-                      const StageIcon = stage.icon;
-                      const isDone = idx < activeIndex;
-                      const isActive = idx === activeIndex;
-                      return (
-                        <div key={stage.id} className="flex items-center gap-1 sm:gap-2">
-                          <div
-                            className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                              isDone
-                                ? "bg-primary text-primary-foreground"
-                                : isActive
-                                ? "bg-primary/15 text-primary ring-2 ring-primary"
-                                : "bg-muted text-muted-foreground/50"
-                            }`}
-                            title={stage.label}
-                          >
-                            {isDone ? (
-                              <Check className="w-4 h-4" />
-                            ) : (
-                              <StageIcon className="w-4 h-4" />
-                            )}
-                          </div>
-                          {idx < STAGES.length - 1 && (
-                            <div
-                              className={`h-0.5 w-4 sm:w-8 rounded-full transition-colors ${
-                                isDone ? "bg-primary" : "bg-muted"
-                              }`}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <AnimatePresence mode="wait">
-                    <motion.p
-                      key={loadingHints}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="text-sm text-muted-foreground/80 italic"
-                    >
-                      {hints[loadingHints]}
-                    </motion.p>
-                  </AnimatePresence>
-
-                  <p className="mt-6 text-xs text-muted-foreground/60 max-w-sm text-center">
-                    通常 30–90 秒,可以先去泡杯茶或伸個懶腰 ☕
-                  </p>
+                  <GachaLoading
+                    stages={STAGES}
+                    activeIndex={activeIndex}
+                    progressPct={progressPct}
+                    hint={hints[loadingHints]}
+                    hintKey={loadingHints}
+                    elapsedSec={elapsedSec}
+                    photo={currentPhoto}
+                  />
                 </motion.div>
               );
             })()}
@@ -506,8 +391,14 @@ export default function Home() {
             )}
 
           </AnimatePresence>
-        </div>
-        
+        </Carton>
+
+        {appState === "upload" && (
+          <div className="mx-auto mt-8 w-full max-w-4xl">
+            <StickerHistory onOpen={handleOpenHistory} />
+          </div>
+        )}
+
         <footer className="w-full mt-auto pt-16 pb-8" data-testid="site-footer">
           <div className="mx-auto max-w-3xl">
             <div className="flex flex-col items-center gap-5 px-4">

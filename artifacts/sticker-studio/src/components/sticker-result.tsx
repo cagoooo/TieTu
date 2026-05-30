@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
   Download,
   FileArchive,
-  ArrowLeft,
   Loader2,
   Minus,
   Plus,
   PackageCheck,
   ZoomIn,
-  Eraser,
   CheckCircle2,
   ExternalLink,
   ScanText,
@@ -20,8 +18,6 @@ import {
 } from "lucide-react";
 import { customFetch, ApiError } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import {
   splitImageWithGuides,
@@ -53,6 +49,10 @@ import {
   type TileAdjustment,
   type TileAdjustments,
 } from "@/lib/sticker-utils";
+import { STICKER_STYLES } from "@/lib/sticker-utils";
+import { cn } from "@/lib/utils";
+import { Panel } from "@/components/gacha/primitives";
+import { capColor } from "@/components/gacha/tokens";
 import { StickerCropper } from "./sticker-cropper";
 import { StickerHistory } from "./sticker-history";
 import { StickerLightbox } from "./sticker-lightbox";
@@ -164,6 +164,47 @@ function Stepper({ label, value, min, max, onChange, testIdPrefix }: StepperProp
         </button>
       </div>
     </div>
+  );
+}
+
+// 盲盒改版的下載 / 動作按鈕（粗框 + 主鈕硬陰影，對應 ss-result.jsx 的 Action）。
+interface GachaActionProps {
+  onClick?: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  /** 主鈕：珊瑚橘填色 + 0 5px 0 ink 硬陰影。 */
+  primary?: boolean;
+  /** 幽靈鈕：白底（分享卡用）。預設奶油底。 */
+  ghost?: boolean;
+  icon: ReactNode;
+  children: ReactNode;
+  sub?: ReactNode;
+  title?: string;
+  testId?: string;
+}
+
+function GachaAction({ onClick, disabled, loading, primary, ghost, icon, children, sub, title, testId }: GachaActionProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      data-testid={testId}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-[15px] border-[3px] border-ink px-4 py-[13px] text-left transition active:translate-y-[2px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        primary ? "text-white" : ghost ? "bg-white text-ink" : "bg-cream text-ink",
+      )}
+      style={primary ? { background: "#FF5A4D", boxShadow: "0 5px 0 #221B1C" } : undefined}
+    >
+      <span className="grid h-6 w-6 shrink-0 place-items-center">
+        {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : icon}
+      </span>
+      <span className="leading-tight">
+        <span className="block text-[15px] font-extrabold">{children}</span>
+        {sub && <span className="mt-px block text-[11.5px] font-medium opacity-80">{sub}</span>}
+      </span>
+    </button>
   );
 }
 
@@ -660,428 +701,398 @@ export function StickerResult({
     },
   };
 
+  const styleLabel = (STICKER_STYLES.find((s) => s.id === styleId) || STICKER_STYLES[0]).label;
+
   return (
-    <div className="w-full max-w-6xl mx-auto pb-20">
-      <div className="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">
-        <Button variant="ghost" onClick={onBack} className="rounded-full" data-testid="button-back">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          再做一組
-        </Button>
-        <div className="flex gap-3 flex-wrap justify-center">
-          <Button
-            variant="outline"
-            onClick={handleDownloadSheet}
-            className="rounded-full border-primary/20 hover:bg-primary/10 font-bold shadow-sm"
-            data-testid="button-download-sheet"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            下載整張貼圖
-          </Button>
-          <Button
-            onClick={handleDownloadZip}
-            disabled={isZipping || tiles.length === 0}
-            variant="outline"
-            className="rounded-full border-primary/20 hover:bg-primary/10 font-bold shadow-sm"
-            data-testid="button-download-zip"
-          >
-            {isZipping ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <FileArchive className="w-4 h-4 mr-2" />
+    <div className="w-full pb-2">
+      {/* ── 開盒標頭 ── */}
+      <div className="mb-[18px] flex flex-wrap items-end justify-between gap-3 px-5 pt-6 sm:px-[30px]">
+        <div className="min-w-0">
+          <div className="font-display mb-3 inline-flex items-center gap-2 rounded-full border-[2.5px] border-ink bg-cap-green px-[14px] py-[5px] text-[12.5px] font-semibold tracking-[0.06em] text-white">
+            ✓ 開盒成功！24 張全部到手
+          </div>
+          <h2 className="font-display text-[32px] font-bold leading-none sm:text-[42px]">
+            你的<span className="text-coral">貼圖收藏</span>
+          </h2>
+          <div className="mt-[11px] flex flex-wrap gap-2">
+            <span className="rounded-full border-2 border-ink bg-cream px-3 py-[5px] text-[12.5px] font-bold">
+              🎁 {styleLabel}
+            </span>
+            {theme && (
+              <span
+                className="rounded-full border-2 border-ink px-3 py-[5px] text-[12.5px] font-bold"
+                style={{ background: "#ECE5FF" }}
+              >
+                # {theme}
+              </span>
             )}
-            下載 {tileCount} 張單張 (ZIP)
-          </Button>
-          <Button
-            onClick={handleOpenLineExport}
-            disabled={isLineExporting || !isLineEligible || tiles.length === 0}
-            title={
-              isLineEligible
-                ? `挑選 LINE 主圖與分頁圖，輸出符合規格的素材包（${LINE_TILE_W}×${LINE_TILE_H}、主圖 ${LINE_MAIN_SIZE}×${LINE_MAIN_SIZE}、分頁圖 ${LINE_TAB_W}×${LINE_TAB_H}）`
-                : `LINE 規格需要剛好 ${LINE_STICKER_COUNT} 張，目前為 ${tileCount} 張。`
-            }
-            className="rounded-full font-bold shadow-md bg-[#06C755] hover:bg-[#05B14C] text-white"
-            data-testid="button-download-line"
-          >
-            {isLineExporting ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <PackageCheck className="w-4 h-4 mr-2" />
-            )}
-            下載 LINE 上架版 (ZIP)
-          </Button>
-          <Button
-            onClick={handleShare}
-            disabled={shareLoading || !canShare}
-            title={
-              !user
-                ? "請先登入才能分享(右上角頭像)"
-                : !imageUrl
-                  ? "貼圖正在上傳到雲端,請稍後再試"
-                  : "建立公開分享連結,任何人點都看得到這組貼圖"
-            }
-            variant="outline"
-            className="rounded-full border-primary/30 hover:bg-primary/10 font-bold shadow-sm"
-            data-testid="button-share"
-          >
-            {shareLoading ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Share2 className="w-4 h-4 mr-2" />
-            )}
-            分享
-          </Button>
-        </div>
-      </div>
-      {!isLineEligible ? (
-        <div className="-mt-4 mb-6 text-center">
-          <p className="text-xs text-muted-foreground" data-testid="line-eligibility-note">
-            想輸出 LINE 上架版？請將切割數量調整為剛好 {LINE_STICKER_COUNT} 張（目前為 {tileCount} 張）。
-          </p>
-        </div>
-      ) : (
-        <div className="-mt-4 mb-6 flex justify-center">
-          <div
-            className="max-w-md w-full rounded-2xl border border-[#06C755]/30 bg-[#06C755]/5 p-4"
-            data-testid="line-upload-hint"
-          >
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="w-5 h-5 text-[#06C755] shrink-0 mt-0.5" />
-              <div className="flex-1 space-y-2">
-                <h4 className="font-bold text-sm text-foreground">如何上架？</h4>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  下載 LINE 上架版 ZIP 後，直接前往 LINE Creators Market 上傳壓縮檔即可申請。
-                </p>
-                <a
-                  href="https://creator.line.me/zh-hant/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm font-bold text-[#06C755] hover:text-[#05B14C] transition-colors"
-                  data-testid="line-creator-link"
-                >
-                  前往 LINE 個人原創市集
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            </div>
+            <span
+              className="rounded-full border-2 border-ink px-3 py-[5px] text-[12.5px] font-bold"
+              style={{ background: "#DDF4EF" }}
+            >
+              {tileCount} / 24 {isLineEligible ? "✓" : ""}
+            </span>
           </div>
         </div>
-      )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* 一鍵去背 toggle（開啟＝薰衣草） */}
+          <button
+            type="button"
+            onClick={() => setMatteEnabled((v) => !v)}
+            aria-pressed={matteEnabled}
+            data-testid="matte-toggle"
+            className={cn(
+              "flex items-center gap-2.5 rounded-[14px] border-[3px] border-ink px-4 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral",
+              matteEnabled ? "text-white" : "bg-white text-ink",
+            )}
+            style={matteEnabled ? { background: "#B59CFF" } : undefined}
+          >
+            <span
+              className="relative inline-block h-[22px] w-[38px] rounded-full transition-colors"
+              style={{ background: matteEnabled ? "#221B1C" : "#ddd" }}
+            >
+              <span
+                className="absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white transition-all"
+                style={{ left: matteEnabled ? 18 : 2 }}
+              />
+            </span>
+            <span className="text-[14px] font-extrabold">一鍵去背</span>
+          </button>
+          <button
+            type="button"
+            onClick={onBack}
+            data-testid="button-back"
+            className="font-display rounded-[14px] border-[3px] border-ink bg-white px-5 py-2.5 text-[15px] font-semibold text-ink transition active:translate-y-[2px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral"
+          >
+            ↻ 再扭一組
+          </button>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-7">
-          <Card className="border-2 border-primary/15 shadow-xl rounded-3xl">
-            <CardContent className="p-5 sm:p-6 space-y-4">
-              <div>
-                <h3 className="text-lg font-bold mb-1">調整切割線</h3>
-                <p className="text-xs text-muted-foreground">
-                  生成結果若有歪斜或邊距不均，可拖曳格線校正後再下載。
-                </p>
-              </div>
-
-              <div
-                className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4"
-                data-testid="grid-controls"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold">切割數量</p>
-                    <p className="text-xs text-muted-foreground">
-                      若 AI 產出的張數與預設不同，可在這裡改成符合的欄列數。
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <Stepper
-                      label="欄"
-                      value={cols}
-                      min={MIN_COLS}
-                      max={MAX_COLS}
-                      onChange={setCols}
-                      testIdPrefix="cols-stepper"
+      <div className="grid grid-cols-1 gap-[22px] px-5 pb-6 sm:px-[30px] lg:grid-cols-[1fr_300px] lg:items-start">
+        {/* ── 左：膠囊貼圖 grid + 切割線 + OCR ── */}
+        <div className="flex min-w-0 flex-col gap-[18px]">
+          {/* 24 張膠囊貼圖（主角） */}
+          <Panel className="!p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-[17px] font-bold">開出 {tileCount} 張貼圖</h3>
+              <div className="flex items-center gap-3">
+                {matteEnabled && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-ink/60">去背強度</span>
+                    <Slider
+                      min={MATTE_TOLERANCE_MIN}
+                      max={MATTE_TOLERANCE_MAX}
+                      step={1}
+                      value={[matteTolerance]}
+                      onValueChange={(v) => setMatteTolerance(clampMatteTolerance(v[0]))}
+                      className="w-24"
+                      data-testid="matte-tolerance-slider"
                     />
-                    <Stepper
-                      label="列"
-                      value={rows}
-                      min={MIN_ROWS}
-                      max={MAX_ROWS}
-                      onChange={setRows}
-                      testIdPrefix="rows-stepper"
-                    />
-                    <span
-                      className="text-xs text-muted-foreground tabular-nums"
-                      data-testid="grid-summary"
-                    >
-                      = {tileCount} 張
+                    <span className="w-6 text-right text-[11px] font-bold tabular-nums" data-testid="matte-tolerance-value">
+                      {matteTolerance}
                     </span>
                   </div>
-                </div>
-              </div>
-
-              <StickerCropper
-                sheetBase64={sheetBase64}
-                guides={guides}
-                onGuidesChange={setGuides}
-                resetCols={cols}
-                resetRows={rows}
-              />
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-5">
-          <Card className="border-2 border-primary/20 shadow-xl rounded-3xl lg:sticky lg:top-8">
-            <CardContent className="p-5 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold">切割預覽（{tileCount} 張）</h3>
+                )}
                 {isSplitting && (
-                  <span className="flex items-center text-xs text-muted-foreground">
-                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  <span className="flex items-center gap-1 text-[11px] text-ink/50">
+                    <Loader2 className="h-3 w-3 animate-spin" />
                     更新中
                   </span>
                 )}
               </div>
+            </div>
 
-              {/* 一鍵去背控制:影響預覽 + 下載 ZIP / 整張 PNG */}
-              <div
-                className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4 mb-4"
-                data-testid="matte-controls"
+            <div
+              className="rounded-[14px] p-3"
+              style={
+                matteEnabled
+                  ? {
+                      // 去背棋盤格（透明示意）
+                      background:
+                        "conic-gradient(#eee 90deg, #fff 90deg 180deg, #eee 180deg 270deg, #fff 270deg) 0 0 / 22px 22px",
+                    }
+                  : { backgroundColor: "#FFF6EC" }
+              }
+            >
+              <motion.div
+                variants={container}
+                initial="hidden"
+                animate="show"
+                className="grid gap-[11px]"
+                style={previewGridStyle}
+                data-testid="tile-preview-grid"
               >
-                <div className="flex flex-col gap-2">
-                  <label
-                    htmlFor="matte-toggle"
-                    className="flex items-center justify-between gap-3 cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Eraser className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-bold">一鍵去背(LINE 適用)</span>
-                    </div>
-                    <Switch
-                      id="matte-toggle"
-                      checked={matteEnabled}
-                      onCheckedChange={setMatteEnabled}
-                      data-testid="matte-toggle"
-                    />
-                  </label>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    開啟後將自動去除每張貼圖的灰色背景,讓下載的 24 張 PNG 直接是透明背景,適合上傳 LINE 個人原創貼圖。
-                  </p>
-                  {matteEnabled && (
-                    <div className="flex items-center gap-3 pt-2">
-                      <span className="text-xs font-medium text-foreground/80 w-12 shrink-0">
-                        強度
-                      </span>
-                      <Slider
-                        min={MATTE_TOLERANCE_MIN}
-                        max={MATTE_TOLERANCE_MAX}
-                        step={1}
-                        value={[matteTolerance]}
-                        onValueChange={(v) =>
-                          setMatteTolerance(clampMatteTolerance(v[0]))
-                        }
-                        className="flex-1"
-                        data-testid="matte-tolerance-slider"
-                      />
-                      <span
-                        className="text-xs tabular-nums w-8 text-right font-bold"
-                        data-testid="matte-tolerance-value"
-                      >
-                        {matteTolerance}
-                      </span>
-                    </div>
-                  )}
-                  {matteEnabled && (
-                    <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
-                      強度越高去得越乾淨,但角色邊緣可能被誤切。建議從預設 {DEFAULT_MATTE_TOLERANCE} 開始試。
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* 文字準確度檢查 (Gemini Vision multimodal verification) */}
-              <div
-                className="rounded-2xl border border-border bg-muted/40 p-3 sm:p-4 mb-4"
-                data-testid="ocr-controls"
-              >
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <ScanText className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-bold">AI 文字準確度檢查</span>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleVerifyOcr()}
-                      disabled={ocrState === "loading" || !sheetBase64}
-                      className="rounded-full text-xs h-8"
-                      data-testid="ocr-verify-button"
-                    >
-                      {ocrState === "loading" ? (
-                        <>
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                          AI 辨識中...
-                        </>
-                      ) : ocrResult ? (
-                        <>
-                          <ScanText className="w-3 h-3 mr-1" />
-                          重新檢查
-                        </>
-                      ) : (
-                        <>
-                          <ScanText className="w-3 h-3 mr-1" />
-                          檢查文字準確度
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    AI 偶爾會把中文寫成形似的錯字。<strong>貼圖完成後會自動用 Gemini Vision 驗證一次</strong>,結果直接顯示在下方。你也可以隨時點「重新檢查」再跑一次。中英文混合(Hi、YA)都能辨識。
-                  </p>
-                  {ocrError && (
-                    <p className="text-[11px] text-destructive font-medium leading-relaxed pt-1">
-                      錯誤:{ocrError}
-                    </p>
-                  )}
-                  {ocrResult && (
-                    <div className="mt-2 rounded-xl bg-background/80 border border-border p-3 space-y-2">
-                      <div className="flex items-center gap-2 text-sm">
-                        {ocrResult.mismatches.length === 0 ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4 text-[#06C755]" />
-                            <span className="font-bold text-foreground">全部正確!</span>
-                            <span className="text-muted-foreground">
-                              檢查 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%。
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <AlertTriangle className="w-4 h-4 text-amber-500" />
-                            <span className="font-bold text-foreground">
-                              {ocrResult.mismatches.length} 處可能寫錯
-                            </span>
-                            <span className="text-muted-foreground">
-                              (檢查 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%)
-                            </span>
-                          </>
+                {tiles.map((tile, i) => {
+                  const adjusted = !isTileAdjustmentDefault(tileAdjustments[i]);
+                  return (
+                    <motion.div key={i} variants={item} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setLightboxIndex(i)}
+                        className={cn(
+                          "group relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[13px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-coral focus-visible:ring-offset-2",
+                          matteEnabled ? "" : "border-[2.5px] border-ink bg-white",
                         )}
-                      </div>
-                      {ocrResult.mismatches.length > 0 && (
-                        <ul className="space-y-1 pt-1">
-                          {ocrResult.mismatches.map((m) => (
-                            <li
-                              key={m.index}
-                              className="text-xs text-foreground/90 flex items-center gap-2"
-                            >
-                              <span className="inline-flex w-6 h-6 rounded-full bg-amber-500/15 text-amber-700 items-center justify-center font-bold">
-                                {m.index + 1}
-                              </span>
-                              <span>
-                                期待<strong>「{m.expected}」</strong>
-                                ,但 AI 看到
-                                <strong className="text-amber-700">「{m.recognized || "(空白)"}」</strong>
-                                <span className="text-muted-foreground ml-1">
-                                  ({Math.round(m.similarity * 100)}% 相符)
-                                </span>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      {ocrResult.mismatches.length > 0 && (
-                        <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
-                          建議:點「再做一組」回上頁,把錯誤的格子文字稍微改寫(如加標點、換同義詞),再重新生成。
-                        </p>
-                      )}
-                    </div>
+                        style={matteEnabled ? undefined : { boxShadow: "0 2px 0 rgba(0,0,0,.12)" }}
+                        aria-label={`放大檢視第 ${i + 1} 張${texts[i] ? `「${texts[i]}」` : ""}`}
+                        data-testid={`tile-preview-${i}`}
+                      >
+                        <span
+                          className="font-display absolute left-1.5 top-1.5 z-[2] grid h-[18px] w-[18px] place-items-center rounded-[6px] border-[1.5px] border-ink text-[10px] font-semibold text-white"
+                          style={{ background: capColor(i) }}
+                          aria-hidden="true"
+                        >
+                          {i + 1}
+                        </span>
+                        <img
+                          src={tile}
+                          alt={texts[i] || `Sticker ${i + 1}`}
+                          className="h-full w-full object-contain p-1"
+                          data-testid={`tile-${i}`}
+                        />
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/25">
+                          <span className="font-display inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-1 text-[10px] font-bold text-ink opacity-0 shadow transition-opacity group-hover:opacity-100">
+                            <ZoomIn className="h-3 w-3" />
+                            放大
+                          </span>
+                        </span>
+                        {adjusted && (
+                          <span
+                            className="absolute right-1 top-1 rounded-full bg-coral px-1.5 py-0.5 text-[10px] font-bold text-white shadow"
+                            data-testid={`tile-adjusted-badge-${i}`}
+                          >
+                            已微調
+                          </span>
+                        )}
+                      </button>
+                    </motion.div>
+                  );
+                })}
+                {tiles.length === 0 && (
+                  <div
+                    className="flex h-32 items-center justify-center text-sm text-ink/50"
+                    style={{ gridColumn: `span ${Math.max(1, cols)} / span ${Math.max(1, cols)}` }}
+                  >
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    正在裁切貼圖...
+                  </div>
+                )}
+              </motion.div>
+            </div>
+            <p className="mt-3 text-center text-[11px] leading-relaxed text-ink/50">
+              點任一張可放大檢視，並可在彈窗內進入單張微調。
+              {adjustedTileCount > 0 && (
+                <>
+                  <br />
+                  <span data-testid="adjusted-summary">
+                    已微調 {adjustedTileCount} 張，下載時會一起套用。
+                  </span>
+                </>
+              )}
+            </p>
+          </Panel>
+
+          {/* 調整切割線（進階：拖曳格線 + 欄列數） */}
+          <Panel className="!p-4 sm:!p-5">
+            <div
+              className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              data-testid="grid-controls"
+            >
+              <div>
+                <h3 className="font-display text-[16px] font-bold">調整切割線</h3>
+                <p className="mt-0.5 text-[11px] text-ink/50">
+                  生成結果若有歪斜或邊距不均，可拖曳格線校正後再下載。
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Stepper label="欄" value={cols} min={MIN_COLS} max={MAX_COLS} onChange={setCols} testIdPrefix="cols-stepper" />
+                <Stepper label="列" value={rows} min={MIN_ROWS} max={MAX_ROWS} onChange={setRows} testIdPrefix="rows-stepper" />
+                <span className="text-[11px] tabular-nums text-ink/50" data-testid="grid-summary">
+                  = {tileCount} 張
+                </span>
+              </div>
+            </div>
+            <StickerCropper
+              sheetBase64={sheetBase64}
+              guides={guides}
+              onGuidesChange={setGuides}
+              resetCols={cols}
+              resetRows={rows}
+            />
+          </Panel>
+
+          {/* AI 文字準確度檢查（Gemini Vision） */}
+          <Panel className="!p-4 sm:!p-5" data-testid="ocr-controls">
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <ScanText className="h-4 w-4 text-coral" />
+                  <span className="font-display text-[15px] font-bold">AI 文字準確度檢查</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleVerifyOcr()}
+                  disabled={ocrState === "loading" || !sheetBase64}
+                  data-testid="ocr-verify-button"
+                  className="inline-flex h-8 items-center gap-1 rounded-full border-2 border-ink px-3 text-[12px] font-bold text-ink transition hover:bg-ink/5 disabled:opacity-50"
+                >
+                  {ocrState === "loading" ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      AI 辨識中...
+                    </>
+                  ) : ocrResult ? (
+                    <>
+                      <ScanText className="h-3 w-3" />
+                      重新檢查
+                    </>
+                  ) : (
+                    <>
+                      <ScanText className="h-3 w-3" />
+                      檢查文字準確度
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[12px] leading-relaxed text-ink/55">
+                AI 偶爾會把中文寫成形似的錯字。<strong>貼圖完成後會自動用 Gemini Vision 驗證一次</strong>,結果直接顯示在下方。你也可以隨時點「重新檢查」再跑一次。中英文混合(Hi、YA)都能辨識。
+              </p>
+              {ocrError && (
+                <p className="pt-1 text-[11px] font-medium leading-relaxed text-destructive">錯誤:{ocrError}</p>
+              )}
+              {ocrResult && (
+                <div className="mt-2 space-y-2 rounded-[12px] border-2 border-ink/15 bg-cream/60 p-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    {ocrResult.mismatches.length === 0 ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-cap-green" />
+                        <span className="font-bold text-ink">全部正確!</span>
+                        <span className="text-ink/55">
+                          檢查 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%。
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        <span className="font-bold text-ink">{ocrResult.mismatches.length} 處可能寫錯</span>
+                        <span className="text-ink/55">
+                          (檢查 {ocrResult.totalChecked} 張,平均相似度 {Math.round(ocrResult.averageSimilarity * 100)}%)
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {ocrResult.mismatches.length > 0 && (
+                    <ul className="space-y-1 pt-1">
+                      {ocrResult.mismatches.map((m) => (
+                        <li key={m.index} className="flex items-center gap-2 text-xs text-ink/90">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/15 font-bold text-amber-700">
+                            {m.index + 1}
+                          </span>
+                          <span>
+                            期待<strong>「{m.expected}」</strong>,但 AI 看到
+                            <strong className="text-amber-700">「{m.recognized || "(空白)"}」</strong>
+                            <span className="ml-1 text-ink/50">({Math.round(m.similarity * 100)}% 相符)</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {ocrResult.mismatches.length > 0 && (
+                    <p className="pt-1 text-[11px] leading-relaxed text-ink/55">
+                      建議:點「再扭一組」回上頁,把錯誤的格子文字稍微改寫(如加標點、換同義詞),再重新生成。
+                    </p>
                   )}
                 </div>
-              </div>
+              )}
+            </div>
+          </Panel>
+        </div>
 
-              <div
-                className="rounded-2xl p-3"
-                style={
-                  matteEnabled
-                    ? {
-                        // 透明 checker pattern,讓使用者看清去背效果
-                        backgroundColor: "#ffffff",
-                        backgroundImage:
-                          "linear-gradient(45deg, #d1d5db 25%, transparent 25%), linear-gradient(-45deg, #d1d5db 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d1d5db 75%), linear-gradient(-45deg, transparent 75%, #d1d5db 75%)",
-                        backgroundSize: "16px 16px",
-                        backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
-                      }
-                    : { backgroundColor: "#7F7F7F" }
-                }
+        {/* ── 右：下載 rail + 分享（sticky） ── */}
+        <div className="flex flex-col gap-3 lg:sticky lg:top-4">
+          <Panel className="!p-4" style={{ background: "#FFFDF8" }}>
+            <div className="font-display mb-1 text-[17px] font-bold">帶走你的貼圖</div>
+            <div className="mb-3.5 text-[12px] text-ink/50">
+              {matteEnabled ? "已套用透明背景 ✓" : "灰底版 · 開「一鍵去背」可輸出透明背景"}
+            </div>
+            <div className="flex flex-col gap-2.5">
+              <GachaAction
+                primary
+                icon={<Download className="h-5 w-5" />}
+                sub="一張大圖含 24 格"
+                onClick={handleDownloadSheet}
+                testId="button-download-sheet"
               >
-                <motion.div
-                  variants={container}
-                  initial="hidden"
-                  animate="show"
-                  className="grid gap-2"
-                  style={previewGridStyle}
-                  data-testid="tile-preview-grid"
-                >
-                  {tiles.map((tile, i) => {
-                    const adjusted = !isTileAdjustmentDefault(tileAdjustments[i]);
-                    return (
-                      <motion.div
-                        key={i}
-                        variants={item}
-                        className="relative aspect-square rounded-lg overflow-hidden shadow bg-white/10"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setLightboxIndex(i)}
-                          className="group relative block w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#7F7F7F]"
-                          aria-label={`放大檢視第 ${i + 1} 張${texts[i] ? `「${texts[i]}」` : ""}`}
-                          data-testid={`tile-preview-${i}`}
-                        >
-                          <img
-                            src={tile}
-                            alt={texts[i] || `Sticker ${i + 1}`}
-                            className="w-full h-full object-contain"
-                            data-testid={`tile-${i}`}
-                          />
-                          <div className="pointer-events-none absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                            <span className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1 rounded-full bg-white/95 text-foreground px-2 py-1 text-[10px] font-bold shadow">
-                              <ZoomIn className="w-3 h-3" />
-                              點擊放大
-                            </span>
-                          </div>
-                          {adjusted && (
-                            <span
-                              className="absolute top-1 right-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 shadow"
-                              data-testid={`tile-adjusted-badge-${i}`}
-                            >
-                              已微調
-                            </span>
-                          )}
-                        </button>
-                      </motion.div>
-                    );
-                  })}
-                  {tiles.length === 0 && (
-                    <div
-                      className="h-32 flex items-center justify-center text-sm text-muted-foreground"
-                      style={{ gridColumn: `span ${Math.max(1, cols)} / span ${Math.max(1, cols)}` }}
-                    >
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      正在裁切貼圖...
-                    </div>
-                  )}
-                </motion.div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-4 text-center leading-relaxed">
-                這份預覽會即時依照你調整的切割線更新；點任一張可放大檢視，並可在彈窗內進入單張微調。
-                {adjustedTileCount > 0 && (
-                  <>
-                    <br />
-                    <span data-testid="adjusted-summary">
-                      已微調 {adjustedTileCount} 張，下載 ZIP 與 LINE 上架版時會一起套用。
-                    </span>
-                  </>
-                )}
+                下載整張貼圖
+              </GachaAction>
+              <GachaAction
+                icon={<FileArchive className="h-5 w-5" />}
+                sub={`${tileCount} 張單張 PNG`}
+                onClick={handleDownloadZip}
+                loading={isZipping}
+                disabled={isZipping || tiles.length === 0}
+                testId="button-download-zip"
+              >
+                下載 {tileCount} 張 (ZIP)
+              </GachaAction>
+              <GachaAction
+                icon={<PackageCheck className="h-5 w-5 text-[#06C755]" />}
+                sub="main / tab / 24 張 + README"
+                onClick={handleOpenLineExport}
+                loading={isLineExporting}
+                disabled={isLineExporting || !isLineEligible || tiles.length === 0}
+                title={
+                  isLineEligible
+                    ? `挑選 LINE 主圖與分頁圖，輸出符合規格的素材包（${LINE_TILE_W}×${LINE_TILE_H}、主圖 ${LINE_MAIN_SIZE}×${LINE_MAIN_SIZE}、分頁圖 ${LINE_TAB_W}×${LINE_TAB_H}）`
+                    : `LINE 規格需要剛好 ${LINE_STICKER_COUNT} 張，目前為 ${tileCount} 張。`
+                }
+                testId="button-download-line"
+              >
+                下載 LINE 上架版
+              </GachaAction>
+            </div>
+            {!isLineEligible ? (
+              <p className="mt-3 text-[11px] leading-relaxed text-ink/50" data-testid="line-eligibility-note">
+                想輸出 LINE 上架版？請將切割數量調整為剛好 {LINE_STICKER_COUNT} 張（目前 {tileCount} 張）。
               </p>
-            </CardContent>
-          </Card>
+            ) : (
+              <a
+                href="https://creator.line.me/zh-hant/"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="line-creator-link"
+                className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-bold text-[#06C755] hover:text-[#05B14C]"
+              >
+                前往 LINE 個人原創市集
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </Panel>
+
+          <Panel className="!p-4">
+            <div className="font-display mb-2.5 text-[16px] font-bold">分享給朋友</div>
+            <GachaAction
+              ghost
+              icon={<Share2 className="h-5 w-5" />}
+              onClick={handleShare}
+              loading={shareLoading}
+              disabled={shareLoading || !canShare}
+              title={
+                !user
+                  ? "請先登入才能分享(右上角頭像)"
+                  : !imageUrl
+                    ? "貼圖正在上傳到雲端,請稍後再試"
+                    : "建立公開分享連結,任何人點都看得到這組貼圖"
+              }
+              testId="button-share"
+            >
+              建立分享連結
+            </GachaAction>
+            <p className="mt-3 text-[11px] leading-relaxed text-ink/50">
+              💡 連結永久有效，雲端檔案保留 7 天，想長期保存請下載 ZIP 留底。
+            </p>
+          </Panel>
         </div>
       </div>
 

@@ -2,13 +2,9 @@ import { useState, useRef, useImperativeHandle, forwardRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Upload, Image as ImageIcon, Sparkles, Wand2, ShieldCheck, Loader2 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Upload, Image as ImageIcon, Wand2, ShieldCheck, Loader2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import {
   DEFAULT_TEXTS,
@@ -19,6 +15,8 @@ import {
 } from "@/lib/sticker-utils";
 import { customFetch, ApiError } from "@workspace/api-client-react";
 import { TurnstileWidget, type TurnstileWidgetHandle } from "@/components/turnstile-widget";
+import { Capsule, CapsuleAvatar, StepBadge, Panel } from "@/components/gacha/primitives";
+import { capColor, capSoft } from "@/components/gacha/tokens";
 
 const TURNSTILE_SITE_KEY = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() || "";
 
@@ -246,289 +244,306 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
     }
   };
 
+  // 上傳後且可預覽（非 HEIC）才把大頭照放進 hero 膠囊當 teaser；否則顯示盲盒「?」。
+  const showAvatar = Boolean(photoPreview) && !previewUnsupported;
+  const styleHint = STICKER_STYLES.find((s) => s.id === style)?.description ?? "";
+
   return (
-    <div className="w-full max-w-4xl mx-auto pb-12">
-      <div className="text-center mb-10">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", bounce: 0.5 }}
-          className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-full mb-4"
+    <div className="px-5 pb-7 pt-6 sm:px-[30px] sm:pb-[30px] sm:pt-[26px]">
+      {/* ── hero：文案 + 塑膠開窗預覽 ── */}
+      <div className="mb-[26px] flex flex-col gap-[26px] lg:flex-row lg:items-stretch">
+        {/* 文案 */}
+        <div className="flex flex-col justify-center lg:w-[400px] lg:shrink-0">
+          <span className="font-display mb-4 inline-block self-start rounded-[7px] bg-ink px-[13px] py-[5px] text-[12px] font-semibold tracking-[0.16em] text-cream">
+            BLIND BOX · GACHA · 24 SET
+          </span>
+          <h1 className="font-display text-[40px] font-bold leading-[0.96] tracking-[-0.01em] sm:text-[60px]">
+            投一張自拍，
+            <br />
+            <span className="text-coral" style={{ WebkitTextStroke: "2px #221B1C" }}>
+              轉出 24 顆
+            </span>
+            <br />
+            公仔貼圖
+          </h1>
+          <p className="mt-[18px] max-w-[360px] text-[15px] font-medium leading-[1.65] text-[#5a4d4f] sm:text-[16px]">
+            上傳大頭照 → 選風格、改文字 → 扭一下，AI 一次幫你捏出 24 張立體感十足的 Q 版貼圖。
+          </p>
+          <div className="mt-[22px] flex gap-[18px]">
+            {([["24", "張一組"], ["~70s", "生成時間"], ["5", "種風格"]] as const).map(([n, l]) => (
+              <div key={l}>
+                <div className="font-display text-[26px] font-bold leading-none text-coral">{n}</div>
+                <div className="mt-[3px] text-[12px] font-semibold text-[#9a8f84]">{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 塑膠開窗預覽（8 顆膠囊） */}
+        <div
+          className="relative flex-1 rounded-[20px] border-[3px] border-ink px-5 pb-[18px] pt-[26px]"
+          style={{
+            background: "radial-gradient(120% 120% at 50% 0%, #fff, #E1F1FF 130%)",
+            boxShadow: "inset 0 0 0 6px #fff, inset 0 0 0 8px rgba(0,0,0,.07)",
+          }}
         >
-          <Sparkles className="w-8 h-8 text-primary" />
-        </motion.div>
-        <h1 className="text-4xl md:text-5xl font-extrabold text-foreground mb-4 tracking-tight">
-          3D Q版貼圖生成器
-        </h1>
-        <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-          上傳一張自拍照，一鍵將你變成 24 張超可愛的 3D 立體感公仔貼圖！
-        </p>
+          <div className="font-display absolute -top-[13px] left-6 whitespace-nowrap rounded-[7px] border-[2.5px] border-ink bg-coral px-[13px] py-1 text-[12px] font-semibold tracking-[0.14em] text-white">
+            產品預覽 · PREVIEW
+          </div>
+          <div className="grid grid-cols-4 justify-items-center gap-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Capsule key={i} index={i} className="w-full max-w-[108px]">
+                {showAvatar ? <CapsuleAvatar src={photoPreview!} alt="" /> : undefined}
+              </Capsule>
+            ))}
+          </div>
+          <div className="font-display mt-[14px] flex justify-between whitespace-nowrap text-[11px] font-medium tracking-[0.08em] text-[#9a8f84]">
+            <span>NO.01 — 08 / 24</span>
+            <span>▮▮▯▯▯▯ 還有 16 款等你扭</span>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-5 space-y-6">
-          <Card className="border-2 border-primary/20 shadow-xl overflow-hidden rounded-3xl">
-            <CardContent className="p-6">
-              <Label className="text-lg font-bold mb-4 block">1. 上傳大頭照</Label>
-              <div
-                className={`relative border-3 border-dashed rounded-2xl p-8 text-center transition-all duration-200 ease-in-out cursor-pointer ${
-                  isDragging ? "border-primary bg-primary/5 scale-[1.02]" : "border-border hover:border-primary/50 hover:bg-muted/50"
-                }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                />
-                
-                <AnimatePresence mode="wait">
-                  {photoPreview ? (
-                    <motion.div
-                      key="preview"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="relative aspect-square w-full max-w-[240px] mx-auto rounded-xl overflow-hidden shadow-md"
-                    >
-                      {previewUnsupported ? (
-                        // HEIC / HEIF / unsupported format fallback. The
-                        // backend's magic-byte sniffer accepts these formats
-                        // just fine — it's only the <img> preview that
-                        // can't render them outside Safari. Show file info
-                        // so the user can confirm the right file is
-                        // selected, then proceed with upload.
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 bg-gradient-to-br from-amber-50 to-orange-100 text-center">
-                          <div className="w-14 h-14 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center">
-                            <ImageIcon className="w-7 h-7" />
-                          </div>
-                          <p className="text-sm font-bold text-amber-900">
-                            {photoFile?.name ?? "已選擇檔案"}
-                          </p>
-                          {photoFile && (
-                            <p className="text-[11px] text-amber-700/80 leading-snug">
-                              {(photoFile.size / 1024).toFixed(0)} KB
-                              {photoFile.type ? ` · ${photoFile.type}` : ""}
-                            </p>
-                          )}
-                          <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
-                            iPhone HEIC 格式無法在瀏覽器預覽,
-                            <br />
-                            但 <strong>上傳生成沒問題</strong>!
-                          </p>
-                        </div>
-                      ) : (
-                        <img
-                          src={photoPreview}
-                          alt="預覽"
-                          className="w-full h-full object-cover"
-                          onError={() => {
-                            // Triggered when the blob URL fails to decode
-                            // (corrupt file, format unsupported, etc.).
-                            // Switch to the fallback panel so the user
-                            // doesn't see the browser's broken-image icon.
-                            setPreviewUnsupported(true);
-                          }}
-                        />
-                      )}
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <span className="text-white font-medium flex items-center gap-2">
-                          <ImageIcon className="w-5 h-5" /> 點擊更換
-                        </span>
-                      </div>
-                    </motion.div>
+      {/* ── 兩欄設定 ── */}
+      <div className="grid grid-cols-1 gap-[22px] lg:grid-cols-[1fr_1.16fr]">
+        {/* 左欄：上傳 / 主題 / 風格 */}
+        <div className="flex flex-col gap-[18px]">
+          {/* 1 上傳大頭照 */}
+          <Panel>
+            <StepBadge n={1} label="投入大頭照" className="mb-[14px]" />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              role="button"
+              tabIndex={0}
+              aria-label="點擊或拖曳上傳大頭照"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={cn(
+                "cursor-pointer rounded-[15px] border-[2.5px] border-dashed bg-cream text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral focus-visible:ring-offset-2",
+                isDragging ? "scale-[1.01] border-coral bg-coral/5" : "border-coral",
+                photoPreview ? "p-2.5" : "px-3 py-[34px]",
+              )}
+            >
+              {photoPreview ? (
+                <div className="flex items-center gap-3.5">
+                  {previewUnsupported ? (
+                    <div className="grid h-[74px] w-[74px] shrink-0 place-items-center rounded-[13px] border-[2.5px] border-ink bg-amber-100 text-amber-700">
+                      <ImageIcon className="h-7 w-7" />
+                    </div>
                   ) : (
-                    <motion.div
-                      key="placeholder"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="py-12 flex flex-col items-center justify-center"
-                    >
-                      <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
-                        <Upload className="w-10 h-10" />
-                      </div>
-                      <p className="text-lg font-bold mb-2">點擊或拖曳上傳</p>
-                      <p className="text-sm text-muted-foreground">支援 JPG / PNG / WEBP / HEIC(最高 10MB)</p>
-                    </motion.div>
+                    <img
+                      src={photoPreview}
+                      alt="預覽"
+                      onError={() => setPreviewUnsupported(true)}
+                      className="h-[74px] w-[74px] shrink-0 rounded-[13px] border-[2.5px] border-ink object-cover"
+                    />
                   )}
-                </AnimatePresence>
-              </div>
-
-              <div className="mt-8 space-y-4">
-                <Label className="text-lg font-bold block">2. 設定主題 (選填)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="例如：馬年、太空人、社畜日常..."
-                    value={theme}
-                    onChange={(e) => form.setValue("theme", e.target.value)}
-                    className="rounded-xl border-primary/20 focus-visible:ring-primary h-12 text-lg"
-                  />
+                  <div className="text-left">
+                    <div className="text-[16px] font-extrabold text-ink">照片已就緒 ✓</div>
+                    <div className="mt-[3px] text-[12.5px] text-[#988]">
+                      {previewUnsupported
+                        ? `${photoFile?.name ?? "HEIC 檔"}・無法預覽但上傳沒問題`
+                        : "點擊可更換其他照片"}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div
+                    className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-[18px] border-[2.5px] border-ink bg-coral text-white"
+                    style={{ boxShadow: "0 4px 0 rgba(0,0,0,.16)" }}
+                  >
+                    <Upload className="h-7 w-7" />
+                  </div>
+                  <div className="text-[17px] font-extrabold text-ink">點擊或拖曳上傳</div>
+                  <div className="mt-1.5 text-[12.5px] text-[#988]">JPG / PNG / WEBP / HEIC（最高 10MB）</div>
+                </>
+              )}
+            </div>
+          </Panel>
 
-              <div className="mt-8 space-y-3">
-                <Label className="text-lg font-bold block">3. 選擇風格</Label>
-                <div className="grid grid-cols-5 gap-2" role="radiogroup" aria-label="貼圖視覺風格">
-                  {STICKER_STYLES.map((opt) => {
-                    const active = style === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => form.setValue("style", opt.id)}
-                        title={opt.description}
-                        data-testid={`style-option-${opt.id}`}
-                        className={`flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition-all ${
-                          active
-                            ? "border-primary bg-primary/10 shadow-sm"
-                            : "border-border hover:border-primary/40 hover:bg-muted/40"
-                        }`}
-                      >
-                        <span className="text-2xl leading-none" aria-hidden="true">
-                          {opt.emoji}
-                        </span>
-                        <span
-                          className={`text-[11px] font-bold leading-tight text-center ${
-                            active ? "text-primary" : "text-foreground/80"
-                          }`}
-                        >
-                          {opt.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {STICKER_STYLES.find((s) => s.id === style)?.description ?? ""}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          {/* 2 設定主題 */}
+          <Panel>
+            <StepBadge n={2} label="設定主題" hint="選填" className="mb-[14px]" />
+            <input
+              value={theme}
+              onChange={(e) => form.setValue("theme", e.target.value)}
+              placeholder="例如：馬年、太空人、社畜日常…"
+              aria-label="貼圖主題"
+              className="w-full rounded-[12px] border-[2.5px] border-ink bg-cream px-4 py-[13px] text-[15px] text-ink outline-none transition focus:ring-2 focus:ring-coral"
+            />
+          </Panel>
+
+          {/* 3 選擇風格 */}
+          <Panel>
+            <StepBadge n={3} label="選擇風格" className="mb-[14px]" />
+            <div className="grid grid-cols-5 gap-[9px]" role="radiogroup" aria-label="貼圖視覺風格">
+              {STICKER_STYLES.map((opt) => {
+                const active = style === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => form.setValue("style", opt.id)}
+                    title={opt.description}
+                    data-testid={`style-option-${opt.id}`}
+                    className={cn(
+                      "rounded-[13px] border-[2.5px] border-ink px-1 py-[11px] text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral focus-visible:ring-offset-2",
+                      active ? "bg-coral text-white" : "bg-white text-ink hover:-translate-y-px",
+                    )}
+                    style={active ? { boxShadow: "3px 3px 0 #221B1C", transform: "translate(-1px,-1px)" } : undefined}
+                  >
+                    <div className="text-[22px] leading-none" aria-hidden="true">
+                      {opt.emoji}
+                    </div>
+                    <div className="mt-[5px] text-[11px] font-extrabold leading-tight">{opt.label}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-[#9a8f84]">{styleHint}</p>
+          </Panel>
         </div>
 
-        <div className="lg:col-span-7 space-y-6">
-          <Card className="border-2 border-primary/20 shadow-xl rounded-3xl h-full flex flex-col">
-            <CardContent className="p-6 flex-1 flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <Label className="text-lg font-bold block m-0">4. 自訂貼圖文字 (24張)</Label>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetTexts}
-                    disabled={isApplyingTheme}
-                    className="rounded-full text-xs h-8"
-                  >
-                    恢復預設
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleApplyTheme}
-                    disabled={!theme || isApplyingTheme}
-                    className="rounded-full text-xs h-8 bg-primary/10 text-primary hover:bg-primary/20"
-                    data-testid="apply-theme-button"
-                  >
-                    {isApplyingTheme ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : (
-                      <Wand2 className="w-3 h-3 mr-1" />
-                    )}
-                    {isApplyingTheme ? "AI 改寫中…" : "依主題改寫"}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
-                {texts.map((text, i) => (
-                  <div key={i} className="relative group">
-                    <div className="absolute -top-2 -left-2 w-5 h-5 bg-muted text-muted-foreground text-[10px] rounded-full flex items-center justify-center z-10 font-mono shadow-sm border border-border">
-                      {i + 1}
-                    </div>
-                    <Input
-                      value={text}
-                      onChange={(e) => {
-                        const newTexts = [...texts];
-                        newTexts[i] = e.target.value;
-                        form.setValue("texts", newTexts);
-                      }}
-                      className="h-10 text-center rounded-lg border-muted-foreground/20 focus-visible:ring-primary focus-visible:border-primary transition-all group-hover:border-primary/50"
-                      placeholder={`文字 ${i + 1}`}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-auto pt-4 border-t border-border space-y-3">
-                {captchaEnabled && (
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>請完成下方人機驗證，確認你是真人</span>
-                    </div>
-                    <TurnstileWidget
-                      ref={turnstileRef}
-                      siteKey={TURNSTILE_SITE_KEY}
-                      onVerify={(token) => {
-                        setTurnstileToken(token);
-                        setCaptchaError(null);
-                      }}
-                      onError={() => {
-                        setTurnstileToken(null);
-                        setCaptchaError("人機驗證載入失敗，請稍後再試或重新整理頁面。");
-                      }}
-                      onExpire={() => {
-                        setTurnstileToken(null);
-                        setCaptchaError("人機驗證已過期，請重新驗證。");
-                      }}
-                    />
-                    {captchaError && (
-                      <p className="text-xs text-destructive font-medium text-center">
-                        {captchaError}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <Button 
-                  onClick={form.handleSubmit(handleSubmit)} 
-                  disabled={isPending || !photoFile || (captchaEnabled && !turnstileToken)}
-                  className="w-full h-16 text-xl font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all"
-                  size="lg"
+        {/* 右欄：24 格文字 + 投幣生成 */}
+        <Panel className="flex flex-col">
+          <StepBadge
+            n={4}
+            label="自訂貼圖文字"
+            className="mb-[14px]"
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={handleResetTexts}
+                  disabled={isApplyingTheme}
+                  className="rounded-full border-2 border-ink px-[13px] py-1.5 text-[12px] font-bold text-ink transition hover:bg-ink/5 disabled:opacity-50"
                 >
-                  {isPending ? (
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="w-6 h-6 animate-spin" />
-                      魔法生成中...
-                    </span>
+                  恢復預設
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyTheme}
+                  disabled={!theme || isApplyingTheme}
+                  data-testid="apply-theme-button"
+                  className="inline-flex items-center gap-1 rounded-full border-2 border-ink bg-ink px-[13px] py-1.5 text-[12px] font-bold text-cream transition hover:bg-ink/90 disabled:opacity-50"
+                >
+                  {isApplyingTheme ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="w-6 h-6" />
-                      生成 24 張 Q 版貼圖
-                    </span>
+                    <Wand2 className="h-3 w-3" />
                   )}
-                </Button>
-                {!photoFile && (
-                  <p className="text-center text-sm text-destructive mt-2 font-medium">
-                    請先上傳照片才能生成喔！
-                  </p>
-                )}
-                {photoFile && captchaEnabled && !turnstileToken && (
-                  <p className="text-center text-sm text-muted-foreground mt-2">
-                    完成人機驗證後即可生成。
-                  </p>
+                  {isApplyingTheme ? "AI 改寫中…" : "✦ 依主題改寫"}
+                </button>
+              </>
+            }
+          />
+          <div className="grid grid-cols-2 gap-[9px] sm:grid-cols-3 lg:grid-cols-4">
+            {texts.map((text, i) => (
+              <div key={i} className="relative">
+                <span
+                  className="font-display absolute -left-[7px] -top-[7px] z-[2] grid h-[19px] w-[19px] place-items-center rounded-[6px] border-2 border-ink text-[10px] font-semibold text-white"
+                  style={{ background: capColor(i) }}
+                  aria-hidden="true"
+                >
+                  {i + 1}
+                </span>
+                <input
+                  value={text}
+                  onChange={(e) => {
+                    const newTexts = [...texts];
+                    newTexts[i] = e.target.value;
+                    form.setValue("texts", newTexts);
+                  }}
+                  aria-label={`貼圖文字 ${i + 1}`}
+                  placeholder={`文字 ${i + 1}`}
+                  className="h-[42px] w-full rounded-[11px] border-2 border-ink text-center text-[14.5px] font-bold text-ink outline-none transition focus:ring-2 focus:ring-coral"
+                  style={{ background: i % 6 === 0 ? capSoft(i) : "#FFF6EC" }}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-auto pt-[18px]">
+            {captchaEnabled ? (
+              <div className="mb-4 rounded-[12px] border-[2.5px] border-dashed border-ink bg-cream px-[14px] py-[11px]">
+                <div className="mb-2 flex items-center gap-1.5 text-[13px] text-[#7c7173]">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>請完成人機驗證，確認你是真人</span>
+                </div>
+                <TurnstileWidget
+                  ref={turnstileRef}
+                  siteKey={TURNSTILE_SITE_KEY}
+                  onVerify={(token) => {
+                    setTurnstileToken(token);
+                    setCaptchaError(null);
+                  }}
+                  onError={() => {
+                    setTurnstileToken(null);
+                    setCaptchaError("人機驗證載入失敗，請稍後再試或重新整理頁面。");
+                  }}
+                  onExpire={() => {
+                    setTurnstileToken(null);
+                    setCaptchaError("人機驗證已過期，請重新驗證。");
+                  }}
+                />
+                {captchaError && (
+                  <p className="mt-2 text-[12px] font-medium text-destructive">{captchaError}</p>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={form.handleSubmit(handleSubmit)}
+              disabled={isPending || !photoFile || (captchaEnabled && !turnstileToken)}
+              data-testid="button-generate"
+              className="font-display flex w-full items-center justify-center gap-3 rounded-[18px] border-[3px] border-ink py-[18px] text-[22px] font-bold text-white transition active:translate-y-[3px] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-coral/40 sm:text-[25px]"
+              style={{
+                background: "radial-gradient(140% 120% at 30% 25%, #ffffff55, transparent 45%), #FF5A4D",
+                boxShadow: "0 8px 0 #221B1C",
+              }}
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                  魔法生成中…
+                </>
+              ) : (
+                <>
+                  <span className="text-[28px]" aria-hidden="true">
+                    🥚
+                  </span>
+                  轉一下，生成 24 張貼圖
+                </>
+              )}
+            </button>
+            {!photoFile && (
+              <p className="mt-2 text-center text-[13px] font-medium text-destructive">
+                請先上傳照片才能生成喔！
+              </p>
+            )}
+            {photoFile && captchaEnabled && !turnstileToken && (
+              <p className="mt-2 text-center text-[13px] text-[#9a8f84]">完成人機驗證後即可生成。</p>
+            )}
+          </div>
+        </Panel>
       </div>
     </div>
   );
