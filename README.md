@@ -2,6 +2,8 @@
 
 > 上傳一張大頭照 → 自訂主題與 24 個文字標籤 → AI 生成 4×6 共 24 張 Q 版貼圖 → 下載成 PNG / 24 張 ZIP / **LINE 個人原創貼圖上架包**。
 
+> 📌 **目前版本：v0.1.1**（依據 `CHANGELOG.md`）
+
 | 介面 | 後端 | 模型 | 部署 |
 |---|---|---|---|
 | Vite + React 19 + Tailwind 4 + shadcn/ui | Express 5(monorepo)→ Cloud Functions v2 | **Google Gemini 2.5 Flash Image**(`gemini-2.5-flash-image`,multimodal IMAGE output) | **GitHub + Firebase**(主推) |
