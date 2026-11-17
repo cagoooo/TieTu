@@ -1,5 +1,10 @@
 # 更新日誌 (Changelog)
 
+## [0.1.2] - 2026-11-18
+
+### 新增 (Added)
+- App 內建瀏覽器防護：LINE 自動改用外部瀏覽器、Android 臉書／IG 自動叫出 Chrome、iPhone 顯示引導（避免 Google 登入 403）。
+
 ## [0.1.1] - 2026-04-27
 
 ### 新增 (Added)
