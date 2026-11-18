@@ -53,13 +53,16 @@ export function getFirebaseAuth(): Auth {
   return _auth;
 }
 
+/** App 內建瀏覽器被擋下登入時丟出的錯誤碼（不是登入失敗，呼叫端不需要再顯示錯誤通知） */
+export const IN_APP_BROWSER_SIGNIN_CODE = "app/in-app-browser";
+
 export async function signInWithGoogle(): Promise<User> {
   // App 內建瀏覽器（LINE／FB 等）：Google 禁止在此登入（403 disallowed_useragent）。
   // 頁首防護會自動跳轉／引導；使用者按「先不登入，繼續瀏覽」後又按登入時，在這裡再提醒一次，不開登入視窗。
   if (/FBAN|FBAV|FB_IAB|Instagram|Messenger|MicroMessenger|KAKAOTALK|\bLine\//i.test(navigator.userAgent || '')) {
     try { window.alert('您目前在 App 內建瀏覽器（LINE／FB 等）中，Google 基於安全政策禁止在此登入。\n\n請點右上／右下角「⋯」→ 選「用預設瀏覽器開啟」後再登入。'); } catch { }
-    // 回傳型別是 User，無法回 null；丟出「使用者取消」錯誤碼，呼叫端（auth-pill.tsx）當成登入取消。
-    throw Object.assign(new Error("in-app-browser"), { code: "auth/popup-closed-by-user" });
+    // 回傳型別是 User，無法回 null；丟出專用錯誤碼，呼叫端（auth-pill.tsx）看到就安靜結束（提醒視窗已說明）。
+    throw Object.assign(new Error("in-app-browser"), { code: IN_APP_BROWSER_SIGNIN_CODE });
   }
   const provider = new GoogleAuthProvider();
   // Always show the account chooser so users on shared computers can pick

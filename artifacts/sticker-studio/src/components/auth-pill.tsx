@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { IN_APP_BROWSER_SIGNIN_CODE } from "@/lib/firebase";
 
 /**
  * Header-corner authentication pill.
@@ -39,6 +40,8 @@ export function AuthPill() {
       });
     } catch (err) {
       const code = (err as { code?: string })?.code ?? "";
+      // App 內建瀏覽器：已跳提醒改用瀏覽器開啟，不是登入失敗，不再顯示紅色通知
+      if (code === IN_APP_BROWSER_SIGNIN_CODE) return;
       const message =
         code === "auth/popup-closed-by-user"
           ? "登入已取消。"
