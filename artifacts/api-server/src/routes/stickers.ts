@@ -12,7 +12,16 @@ import { verifyTexts } from "@workspace/integrations-gemini-server/verify";
 import { notifyAdmin } from "@workspace/integrations-line-server/notify";
 import { logger } from "../lib/logger";
 import { tryUploadSheetPng } from "../lib/storage";
-import { attachFirebaseUser, getRequestUser } from "../lib/auth-middleware";
+import type { Request, Response } from "express";
+import { getRequestUser, requireGoogleUser } from "../lib/auth-middleware";
+import {
+  consumeQuota,
+  refundQuota,
+  readQuota,
+  notifyChat,
+  DAILY_GENERATE_LIMIT,
+  type QuotaKind,
+} from "../lib/usage-guard";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
 
 // Per-IP rate limiting was removed in deployment plan A: this is a private /
@@ -198,8 +207,8 @@ Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). D
 
 router.post(
   "/stickers/generate",
+  requireGoogleUser(),
   verifyTurnstile(),
-  attachFirebaseUser(),
   async (req, res) => {
     const parsed = GenerateStickerSheetBody.safeParse(req.body);
     if (!parsed.success) {
@@ -231,16 +240,51 @@ router.post(
 
     const prompt = buildPrompt(texts, theme ?? null, styleId);
 
+    // requireGoogleUser() 已確認登入，這裡一定有使用者
+    const authedUser = getRequestUser(req)!;
+    const startedAt = Date.now();
+
+    // 每個帳號每天 3 次（台北午夜重置）。通過人機驗證後才扣；AI 失敗會退回。
+    let quota;
     try {
-      // Phase 2A: log uid when the SPA sent an authenticated request. Used
-      // for usage analytics and (in Phase 3) per-user quota enforcement.
-      const authedUser = getRequestUser(req);
+      quota = await consumeQuota("generate", authedUser.uid);
+    } catch (err) {
+      logger.error({ err }, "[quota] consume failed");
+      res.status(503).json({
+        error: "暫時無法確認今天的使用次數，請稍後再試一次。",
+        code: "quota/unavailable",
+      });
+      return;
+    }
+    if (!quota.allowed) {
+      if (shouldNotifyBlocked(authedUser.uid)) {
+        await notifyChat({ event: "blocked", user: authedUser, styleId, remaining: 0 });
+      }
+      res.status(429).json({
+        error: `今天的 ${DAILY_GENERATE_LIMIT} 次已經用完囉，明天（台北時間午夜後）再來玩！`,
+        code: "quota/daily-limit",
+        scope: "day",
+        dailyLimit: DAILY_GENERATE_LIMIT,
+        dailyRemaining: 0,
+      });
+      return;
+    }
+    const countedDay = quota.day;
+    const remainingIfKept = quota.remaining;
+    /** 失敗時退回次數並回傳退回後的剩餘次數 */
+    const refundAndRemaining = async (): Promise<number> => {
+      const used = await refundQuota("generate", authedUser.uid, countedDay);
+      return used === null ? remainingIfKept : Math.max(0, DAILY_GENERATE_LIMIT - used);
+    };
+
+    try {
       logger.info(
         {
-          uid: authedUser?.uid ?? null,
-          email: authedUser?.email ?? null,
+          uid: authedUser.uid,
+          email: authedUser.email ?? null,
           theme: theme ?? null,
           style: styleId,
+          dailyUsed: quota.used,
         },
         "[stickers] generate request",
       );
@@ -264,7 +308,23 @@ router.post(
       // Tack imageUrl onto the response. The SPA reads it via a cast in
       // home.tsx (the auto-generated zod schema doesn't yet know about
       // it; deliberately not running orval codegen for one optional field).
-      res.json(imageUrl ? { ...parsedPayload, imageUrl } : parsedPayload);
+      // 回應前先送 Chat 通知（Cloud Functions 回應後可能被凍結；2.5 秒逾時）
+      await notifyChat({
+        event: "success",
+        user: authedUser,
+        styleId,
+        remaining: remainingIfKept,
+        elapsedMs: Date.now() - startedAt,
+      });
+      const quotaInfo = {
+        dailyLimit: DAILY_GENERATE_LIMIT,
+        dailyRemaining: remainingIfKept,
+      };
+      res.json(
+        imageUrl
+          ? { ...parsedPayload, imageUrl, ...quotaInfo }
+          : { ...parsedPayload, ...quotaInfo },
+      );
 
       // 🔔 Fire-and-forget admin LINE notification — must NOT delay the user
       // response. We void the promise so unhandled rejections from the LINE
@@ -275,8 +335,8 @@ router.post(
           kind: "generate_success",
           theme: theme ?? null,
           styleId,
-          uid: authedUser?.uid ?? null,
-          email: authedUser?.email ?? null,
+          uid: authedUser.uid,
+          email: authedUser.email ?? null,
           imageUrl: imageUrl ?? undefined,
         },
         logger,
@@ -287,20 +347,31 @@ router.post(
           { code: err.code, cause: err.cause, theme, style: styleId },
           "Sticker generation classified failure",
         );
+        const remainingAfterRefund = await refundAndRemaining();
+        await notifyChat({
+          event: "failure",
+          user: authedUser,
+          styleId,
+          remaining: remainingAfterRefund,
+          elapsedMs: Date.now() - startedAt,
+          errorMessage: `${err.code}：${err.userMessage}`,
+        });
         res.status(err.httpStatus).json({
           error: err.userMessage,
           code: err.code,
+          dailyLimit: DAILY_GENERATE_LIMIT,
+          dailyRemaining: remainingAfterRefund,
+          refunded: true,
         });
         // Notify admin of the classified failure so they can spot patterns
         // (e.g. quota_exhausted spike, repeated safety_block from same uid).
-        const authedUser = getRequestUser(req);
         void notifyAdmin(
           {
             kind: "generate_failure",
             theme: theme ?? null,
             styleId,
-            uid: authedUser?.uid ?? null,
-            email: authedUser?.email ?? null,
+            uid: authedUser.uid,
+            email: authedUser.email ?? null,
             errorCode: err.code,
             errorMessage: err.userMessage,
           },
@@ -311,20 +382,31 @@ router.post(
       logger.error({ err }, "Sticker generation failed (unclassified)");
       const message =
         err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
+      const remainingAfterRefund = await refundAndRemaining();
+      await notifyChat({
+        event: "failure",
+        user: authedUser,
+        styleId,
+        remaining: remainingAfterRefund,
+        elapsedMs: Date.now() - startedAt,
+        errorMessage: `internal：${message}`,
+      });
       res.status(500).json({
         error: `貼圖生成失敗：${message}`,
         code: "internal",
+        dailyLimit: DAILY_GENERATE_LIMIT,
+        dailyRemaining: remainingAfterRefund,
+        refunded: true,
       });
       // Unclassified failures get tagged "internal" — useful to know
       // immediately when something we don't have a code for breaks.
-      const authedUser = getRequestUser(req);
       void notifyAdmin(
         {
           kind: "generate_failure",
           theme: theme ?? null,
           styleId,
-          uid: authedUser?.uid ?? null,
-          email: authedUser?.email ?? null,
+          uid: authedUser.uid,
+          email: authedUser.email ?? null,
           errorCode: "internal",
           errorMessage: message,
         },
@@ -346,7 +428,7 @@ interface RewriteTextsRequest {
   originalTexts?: unknown;
 }
 
-router.post("/stickers/rewrite-texts", verifyTurnstile(), attachFirebaseUser(), async (req, res) => {
+router.post("/stickers/rewrite-texts", requireGoogleUser(), verifyTurnstile(), async (req, res) => {
   const body = (req.body ?? {}) as RewriteTextsRequest;
   const themeRaw = typeof body.theme === "string" ? body.theme.trim() : "";
   if (!themeRaw) {
@@ -367,6 +449,9 @@ router.post("/stickers/rewrite-texts", verifyTurnstile(), attachFirebaseUser(), 
   }
   const originalTexts: string[] = originalRaw.map((v) => (typeof v === "string" ? v : String(v ?? "")));
 
+  const fuse = await takeFuse(req, res, "rewrite", "依主題改寫");
+  if (!fuse) return;
+
   try {
     const texts = await rewriteTexts({
       theme: themeRaw,
@@ -375,6 +460,7 @@ router.post("/stickers/rewrite-texts", verifyTurnstile(), attachFirebaseUser(), 
     res.json({ texts });
   } catch (err) {
     logger.error({ err, theme: themeRaw }, "Theme rewrite failed");
+    await refundQuota("rewrite", fuse.uid, fuse.day);
     const message =
       err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
     res.status(500).json({ error: `主題改寫失敗：${message}` });
@@ -401,8 +487,8 @@ interface VerifyTextRequest {
 
 router.post(
   "/stickers/verify-text",
+  requireGoogleUser(),
   verifyTurnstile(),
-  attachFirebaseUser(),
   async (req, res) => {
     const body = (req.body ?? {}) as VerifyTextRequest;
 
@@ -433,6 +519,9 @@ router.post(
       return;
     }
 
+    const fuse = await takeFuse(req, res, "verify", "文字辨識");
+    if (!fuse) return;
+
     try {
       const authedUser = getRequestUser(req);
       logger.info(
@@ -457,6 +546,7 @@ router.post(
       res.json({ recognizedTexts, averageSimilarity });
     } catch (err) {
       logger.error({ err }, "Verify-text failed");
+      await refundQuota("verify", fuse.uid, fuse.day);
       const message =
         err instanceof Error ? err.message : "未知錯誤，請稍後再試。";
       // 5xx so the SPA can suggest "稍後再試". The verify feature is opt-in
@@ -465,5 +555,57 @@ router.post(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// GET /api/stickers/quota — 只查不扣，前端固定顯示「今天還可以生成 N / 3 次」
+// ---------------------------------------------------------------------------
+router.get("/stickers/quota", requireGoogleUser(), async (req, res) => {
+  const user = getRequestUser(req)!;
+  try {
+    const q = await readQuota("generate", user.uid);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ dailyLimit: q.limit, dailyUsed: q.used, dailyRemaining: q.remaining, day: q.day });
+  } catch (err) {
+    logger.warn({ err }, "[quota] read failed");
+    res.status(503).json({ error: "暫時無法讀取今天的使用次數。", code: "quota/unavailable" });
+  }
+});
+
+/** 被擋的 Chat 通知：同一個帳號 5 分鐘內只發一則，避免被狂按洗版 */
+const blockedNotifiedAt = new Map<string, number>();
+function shouldNotifyBlocked(uid: string): boolean {
+  const now = Date.now();
+  const last = blockedNotifiedAt.get(uid) ?? 0;
+  if (now - last < 5 * 60 * 1000) return false;
+  if (blockedNotifiedAt.size > 500) blockedNotifiedAt.clear();
+  blockedNotifiedAt.set(uid, now);
+  return true;
+}
+
+/** 中間步驟（改寫文字、文字辨識）的每日保險絲；超過回 429 並回傳 null */
+async function takeFuse(
+  req: Request,
+  res: Response,
+  kind: Exclude<QuotaKind, "generate">,
+  label: string,
+): Promise<{ uid: string; day: string } | null> {
+  const user = getRequestUser(req)!;
+  try {
+    const q = await consumeQuota(kind, user.uid);
+    if (!q.allowed) {
+      res.status(429).json({
+        error: `今天的「${label}」次數已達上限（${q.limit} 次），明天再試。`,
+        code: "quota/fuse",
+        scope: "day",
+      });
+      return null;
+    }
+    return { uid: user.uid, day: q.day };
+  } catch (err) {
+    logger.error({ err, kind }, "[quota] fuse consume failed");
+    res.status(503).json({ error: "暫時無法確認使用次數，請稍後再試一次。", code: "quota/unavailable" });
+    return null;
+  }
+}
 
 export default router;

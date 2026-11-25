@@ -72,3 +72,45 @@ export function attachFirebaseUser(): RequestHandler {
     next();
   };
 }
+
+/**
+ * 嚴格版：會花 Gemini 費用的端點一律要 Google 登入（2026-11-25 起）。
+ * 沒帶憑證、憑證無效或匿名登入 → 401（中文訊息＋code: "auth/required"）。
+ * 驗證通過後一樣把使用者掛在 req 上，後面的 getRequestUser() 照常可用。
+ */
+export function requireGoogleUser(): RequestHandler {
+  ensureAdminApp();
+  return async (req, res, next) => {
+    const header =
+      req.header("authorization") ?? req.header("Authorization") ?? "";
+    const token = header.startsWith("Bearer ")
+      ? header.slice("Bearer ".length).trim()
+      : "";
+    if (!token) {
+      res.status(401).json({
+        error: "請先用 Google 帳號登入才能使用（每個帳號每天可以生成 3 次）。",
+        code: "auth/required",
+      });
+      return;
+    }
+    let decoded: DecodedIdToken;
+    try {
+      decoded = await getAuth().verifyIdToken(token);
+    } catch {
+      res.status(401).json({
+        error: "登入已過期，請重新登入後再試一次。",
+        code: "auth/required",
+      });
+      return;
+    }
+    if (decoded.firebase?.sign_in_provider === "anonymous") {
+      res.status(401).json({
+        error: "請先用 Google 帳號登入才能使用（每個帳號每天可以生成 3 次）。",
+        code: "auth/required",
+      });
+      return;
+    }
+    setRequestUser(req, decoded);
+    next();
+  };
+}

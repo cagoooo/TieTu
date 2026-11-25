@@ -12,6 +12,8 @@ import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
 import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-storage";
 import type { StickerStyleId } from "@/lib/sticker-utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useDailyQuota } from "@/hooks/use-daily-quota";
+import { IN_APP_BROWSER_SIGNIN_CODE } from "@/lib/firebase";
 
 // Code-split the entire result-screen subtree (sticker-result + cropper +
 // lightbox + tile editor + line export dialog). Upload-only users never
@@ -58,8 +60,10 @@ const TOTAL_ESTIMATE_SEC = STAGES.reduce((s, st) => s + st.sec, 0); // 70s
 const PROGRESS_CEILING = 95; // the last 5% comes from the actual response
 
 export default function Home() {
-  const { user } = useAuth();
+  const { user, loading: authLoading, signInWithGoogle } = useAuth();
   const uid = user?.uid ?? null;
+  const signedIn = Boolean(user && !user.isAnonymous);
+  const quota = useDailyQuota(user);
   const [appState, setAppState] = useState<AppState>("upload");
   const [sheetBase64, setSheetBase64] = useState<string | null>(null);
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
@@ -107,6 +111,28 @@ export default function Home() {
     return () => window.clearInterval(id);
   }, [appState]);
 
+  const handleRequestSignIn = async () => {
+    try {
+      const u = await signInWithGoogle();
+      toast({
+        title: `歡迎，${u.displayName ?? "使用者"}！`,
+        description: `登入成功，每個帳號每天可以生成 ${quota.limit} 次。`,
+      });
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? "";
+      // App 內建瀏覽器：已跳提醒改用瀏覽器開啟，不是登入失敗
+      if (code === IN_APP_BROWSER_SIGNIN_CODE || code === "auth/popup-closed-by-user") return;
+      toast({
+        title: "登入失敗",
+        description:
+          code === "auth/popup-blocked"
+            ? "瀏覽器擋住了登入視窗，請允許彈出視窗後再試。"
+            : "請稍後再試一次。",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleGenerate = (
     photoBase64: string,
     theme: string | null,
@@ -152,6 +178,9 @@ export default function Home() {
           // it — read defensively via cast.
           const imageUrl = (data as { imageUrl?: string }).imageUrl;
           setCurrentImageUrl(imageUrl ?? null);
+          const left = (data as { dailyRemaining?: number }).dailyRemaining;
+          if (typeof left === "number") quota.setRemaining(left);
+          else quota.refresh();
           addHistoryEntry(
             {
               theme,
@@ -171,6 +200,25 @@ export default function Home() {
           // either consumed (single-use) or invalid, so the user needs a
           // fresh challenge before retrying.
           generatorRef.current?.resetCaptcha();
+
+          // 以後端記帳為準：成功、失敗退回、被擋都更新一次剩餘次數
+          const errData =
+            error instanceof ApiError
+              ? (error.data as { dailyRemaining?: number; refunded?: boolean; code?: string } | null)
+              : null;
+          if (typeof errData?.dailyRemaining === "number") quota.setRemaining(errData.dailyRemaining);
+          else quota.refresh();
+          const refundNote = errData?.refunded ? "（這次沒有扣掉今天的次數）" : "";
+
+          if (error instanceof ApiError && error.status === 401) {
+            const data = error.data as { error?: string } | null;
+            toast({
+              title: "請先用 Google 帳號登入",
+              description: data?.error ?? "登入後才能生成貼圖。",
+              variant: "destructive",
+            });
+            return;
+          }
 
           if (error instanceof ApiError && error.status === 403) {
             const data = error.data as { error?: string } | null;
@@ -198,7 +246,9 @@ export default function Home() {
               "目前生成需求很多，請稍等一下再試一次。";
             toast({
               title:
-                scope === "day"
+                errData?.code === "quota/daily-limit"
+                  ? `今天的 ${quota.limit} 次用完囉`
+                  : scope === "day"
                   ? "今天的額度用完囉"
                   : "生成太頻繁啦",
               description,
@@ -230,7 +280,7 @@ export default function Home() {
             if (title && serverMsg) {
               toast({
                 title,
-                description: serverMsg,
+                description: serverMsg + refundNote,
                 variant: "destructive",
                 duration: 8000, // longer than default — these messages are dense
               });
@@ -240,7 +290,7 @@ export default function Home() {
 
           toast({
             title: "生成失敗",
-            description: "抱歉，魔法暫時失靈了，請稍後再試！",
+            description: "抱歉，魔法暫時失靈了，請稍後再試！" + refundNote,
             variant: "destructive",
           });
         }
@@ -320,6 +370,11 @@ export default function Home() {
                   ref={generatorRef}
                   onSubmit={handleGenerate}
                   isPending={generateMutation.isPending}
+                  signedIn={signedIn}
+                  authLoading={authLoading}
+                  quotaRemaining={quota.remaining}
+                  quotaLimit={quota.limit}
+                  onRequestSignIn={() => void handleRequestSignIn()}
                 />
               </motion.div>
             )}

@@ -43,6 +43,15 @@ interface StickerGeneratorProps {
     style: StickerStyleId,
   ) => void;
   isPending: boolean;
+  /** 已用 Google 帳號登入（2026-11-25 起生成必須登入） */
+  signedIn: boolean;
+  /** 還在確認登入狀態 */
+  authLoading: boolean;
+  /** 今天還可以生成幾次；null＝還沒查到 */
+  quotaRemaining: number | null;
+  quotaLimit: number;
+  /** 叫出 Google 登入視窗 */
+  onRequestSignIn: () => void;
 }
 
 export interface StickerGeneratorHandle {
@@ -50,7 +59,10 @@ export interface StickerGeneratorHandle {
 }
 
 export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGeneratorProps>(
-  function StickerGenerator({ onSubmit, isPending }, ref) {
+  function StickerGenerator(
+    { onSubmit, isPending, signedIn, authLoading, quotaRemaining, quotaLimit, onRequestSignIn },
+    ref,
+  ) {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   // True when <img> failed to load (corrupt blob, unsupported format) OR when
@@ -151,6 +163,15 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
   };
 
   const handleApplyTheme = async () => {
+    if (!signedIn) {
+      toast({
+        title: "請先用 Google 帳號登入",
+        description: "登入後才能使用 AI 依主題改寫。",
+        variant: "destructive",
+      });
+      onRequestSignIn();
+      return;
+    }
     const trimmedTheme = (theme ?? "").trim();
     if (!trimmedTheme) {
       toast({
@@ -207,6 +228,24 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
   };
 
   const handleSubmit = async (values: FormValues) => {
+    // 沒登入直接擋在這裡，不送出任何請求
+    if (!signedIn) {
+      toast({
+        title: "請先用 Google 帳號登入",
+        description: `登入後每個帳號每天可以生成 ${quotaLimit} 次。`,
+        variant: "destructive",
+      });
+      onRequestSignIn();
+      return;
+    }
+    if (quotaRemaining === 0) {
+      toast({
+        title: `今天的 ${quotaLimit} 次用完囉`,
+        description: "明天（台北時間午夜後）再來玩！",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!photoFile) {
       toast({
         title: "請上傳照片",
@@ -511,8 +550,13 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
 
             <button
               type="button"
-              onClick={form.handleSubmit(handleSubmit)}
-              disabled={isPending || !photoFile || (captchaEnabled && !turnstileToken)}
+              onClick={signedIn ? form.handleSubmit(handleSubmit) : onRequestSignIn}
+              disabled={
+                authLoading ||
+                isPending ||
+                (signedIn &&
+                  (quotaRemaining === 0 || !photoFile || (captchaEnabled && !turnstileToken)))
+              }
               data-testid="button-generate"
               className="font-display flex w-full items-center justify-center gap-3 rounded-[18px] border-[3px] border-ink py-[18px] text-[22px] font-bold text-white transition active:translate-y-[3px] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-coral/40 sm:text-[25px]"
               style={{
@@ -525,6 +569,20 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                   <Loader2 className="h-6 w-6 animate-spin" />
                   魔法生成中…
                 </>
+              ) : !signedIn ? (
+                <>
+                  <span className="text-[26px]" aria-hidden="true">
+                    🔐
+                  </span>
+                  先用 Google 登入再轉一下
+                </>
+              ) : quotaRemaining === 0 ? (
+                <>
+                  <span className="text-[26px]" aria-hidden="true">
+                    🌙
+                  </span>
+                  今天的次數用完囉
+                </>
               ) : (
                 <>
                   <span className="text-[28px]" aria-hidden="true">
@@ -534,12 +592,27 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                 </>
               )}
             </button>
-            {!photoFile && (
+            <p
+              data-testid="quota-note"
+              className={cn(
+                "mt-2 text-center text-[13px] font-semibold",
+                signedIn && quotaRemaining === 0 ? "text-destructive" : "text-[#7c7173]",
+              )}
+            >
+              {!signedIn
+                ? `需要 Google 登入，每個帳號每天可以生成 ${quotaLimit} 次`
+                : quotaRemaining === null
+                  ? `每個帳號每天可以生成 ${quotaLimit} 次`
+                  : quotaRemaining === 0
+                    ? `今天的 ${quotaLimit} 次已用完，明天（台北時間午夜後）再來`
+                    : `今天還可以生成 ${quotaRemaining} / ${quotaLimit} 次（生成失敗不扣次數）`}
+            </p>
+            {signedIn && !photoFile && (
               <p className="mt-2 text-center text-[13px] font-medium text-destructive">
                 請先上傳照片才能生成喔！
               </p>
             )}
-            {photoFile && captchaEnabled && !turnstileToken && (
+            {signedIn && photoFile && captchaEnabled && !turnstileToken && (
               <p className="mt-2 text-center text-[13px] text-[#9a8f84]">完成人機驗證後即可生成。</p>
             )}
           </div>

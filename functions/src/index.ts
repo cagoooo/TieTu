@@ -29,6 +29,8 @@ const TIETU_SENTRY_DSN = defineSecret("TIETU_SENTRY_DSN");
 // lib/integrations-line-server/notify.ts for the runtime fallback logic.
 const TIETU_LINE_CHANNEL_ACCESS_TOKEN = defineSecret("TIETU_LINE_CHANNEL_ACCESS_TOKEN");
 const TIETU_LINE_ADMIN_USER_ID = defineSecret("TIETU_LINE_ADMIN_USER_ID");
+// 每次使用都推 Google Chat（2026-11-25 起；值只放 Secret Manager，不進原始碼）
+const TIETU_GOOGLE_CHAT_WEBHOOK_URL = defineSecret("TIETU_GOOGLE_CHAT_WEBHOOK_URL");
 
 let _sentryInited = false;
 function ensureSentry(): void {
@@ -93,6 +95,10 @@ async function getApp(): Promise<RequestHandler> {
     if (lineAdminId && lineAdminId !== "DISABLED") {
       process.env.TIETU_LINE_ADMIN_USER_ID = lineAdminId;
     }
+    const chatWebhook = TIETU_GOOGLE_CHAT_WEBHOOK_URL.value();
+    if (chatWebhook && chatWebhook !== "DISABLED") {
+      process.env.TIETU_GOOGLE_CHAT_WEBHOOK_URL = chatWebhook;
+    }
     // Cloud Run sits behind two proxy hops (Google Frontend + Cloud Run sidecar).
     process.env.TRUST_PROXY = process.env.TRUST_PROXY ?? "2";
     // Hand-off bucket name to api-server's storage helper. The default GCS
@@ -138,6 +144,7 @@ export const tietu_api = onRequest(
       TIETU_SENTRY_DSN,
       TIETU_LINE_CHANNEL_ACCESS_TOKEN,
       TIETU_LINE_ADMIN_USER_ID,
+      TIETU_GOOGLE_CHAT_WEBHOOK_URL,
     ],
   },
   async (req, res) => {
