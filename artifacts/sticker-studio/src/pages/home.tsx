@@ -10,7 +10,8 @@ import { useGenerateStickerSheet, ApiError } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { addHistoryEntry, type HistoryEntry } from "@/lib/sticker-history";
 import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-storage";
-import type { StickerStyleId } from "@/lib/sticker-utils";
+import { DEFAULT_TEXTS, type StickerStyleId } from "@/lib/sticker-utils";
+import { GeminiSkillCard } from "@/components/gemini-skill-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useDailyQuota } from "@/hooks/use-daily-quota";
 import { useGenerationStatus } from "@/hooks/use-generation-status";
@@ -302,6 +303,20 @@ export default function Home() {
     );
   };
 
+  /** 使用者上傳自己用 Gemini 畫好的貼圖表 → 直接進結果頁切圖（不呼叫 AI） */
+  const handleSheetUploaded = (dataUrl: string) => {
+    preloadResultChunk();
+    setSheetBase64(dataUrl);
+    setCurrentTexts([...DEFAULT_TEXTS]);
+    setCurrentTheme(null);
+    setCurrentStyleId("pop-mart-3d");
+    setCurrentImageUrl(null);
+    setAppState("result");
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   const handleBack = () => {
     setAppState("upload");
     setSheetBase64(null);
@@ -385,6 +400,7 @@ export default function Home() {
                     </div>
                   </div>
                 )}
+                <GeminiSkillCard onSheetUploaded={handleSheetUploaded} />
                 <StickerGenerator
                   ref={generatorRef}
                   onSubmit={handleGenerate}
