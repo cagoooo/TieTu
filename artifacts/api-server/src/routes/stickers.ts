@@ -23,6 +23,11 @@ import {
   type QuotaKind,
 } from "../lib/usage-guard";
 import { verifyTurnstile } from "../middlewares/verify-turnstile";
+import {
+  GENERATION_PAUSED,
+  GENERATION_PAUSED_MESSAGE,
+  rejectIfGenerationPaused,
+} from "../lib/generation-pause";
 
 // Per-IP rate limiting was removed in deployment plan A: this is a private /
 // classroom-shared instance, so the protection layers we rely on are:
@@ -207,6 +212,7 @@ Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). D
 
 router.post(
   "/stickers/generate",
+  rejectIfGenerationPaused(),
   requireGoogleUser(),
   verifyTurnstile(),
   async (req, res) => {
@@ -428,7 +434,7 @@ interface RewriteTextsRequest {
   originalTexts?: unknown;
 }
 
-router.post("/stickers/rewrite-texts", requireGoogleUser(), verifyTurnstile(), async (req, res) => {
+router.post("/stickers/rewrite-texts", rejectIfGenerationPaused(), requireGoogleUser(), verifyTurnstile(), async (req, res) => {
   const body = (req.body ?? {}) as RewriteTextsRequest;
   const themeRaw = typeof body.theme === "string" ? body.theme.trim() : "";
   if (!themeRaw) {
@@ -487,6 +493,7 @@ interface VerifyTextRequest {
 
 router.post(
   "/stickers/verify-text",
+  rejectIfGenerationPaused(),
   requireGoogleUser(),
   verifyTurnstile(),
   async (req, res) => {
@@ -555,6 +562,17 @@ router.post(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// GET /api/stickers/status — 公開（不用登入），前端用來知道生圖是否暫停
+// ---------------------------------------------------------------------------
+router.get("/stickers/status", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    generationPaused: GENERATION_PAUSED,
+    message: GENERATION_PAUSED ? GENERATION_PAUSED_MESSAGE : null,
+  });
+});
 
 // ---------------------------------------------------------------------------
 // GET /api/stickers/quota — 只查不扣，前端固定顯示「今天還可以生成 N / 3 次」

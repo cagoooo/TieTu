@@ -13,6 +13,7 @@ import { useStickerHistoryStorageNotices } from "@/hooks/use-sticker-history-sto
 import type { StickerStyleId } from "@/lib/sticker-utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useDailyQuota } from "@/hooks/use-daily-quota";
+import { useGenerationStatus } from "@/hooks/use-generation-status";
 import { IN_APP_BROWSER_SIGNIN_CODE } from "@/lib/firebase";
 
 // Code-split the entire result-screen subtree (sticker-result + cropper +
@@ -64,6 +65,7 @@ export default function Home() {
   const uid = user?.uid ?? null;
   const signedIn = Boolean(user && !user.isAnonymous);
   const quota = useDailyQuota(user);
+  const generation = useGenerationStatus();
   const [appState, setAppState] = useState<AppState>("upload");
   const [sheetBase64, setSheetBase64] = useState<string | null>(null);
   const [currentTexts, setCurrentTexts] = useState<string[]>([]);
@@ -271,6 +273,7 @@ export default function Home() {
             const titleByCode: Record<string, string> = {
               safety_block: "AI 拒絕了這張照片",
               billing_required: "AI 生圖服務暫停中",
+              generation_paused: "AI 生圖暫停中",
               quota_exhausted: "今天 AI 額度用完了",
               model_not_found: "AI 模型暫時無法使用",
               max_tokens: "AI 輸出被截斷",
@@ -367,6 +370,21 @@ export default function Home() {
                 transition={{ duration: 0.3 }}
                 className="w-full"
               >
+                {generation.paused && (
+                  <div
+                    role="status"
+                    data-testid="generation-paused-banner"
+                    className="mb-5 flex items-start gap-3 rounded-[18px] border-[3px] border-ink bg-[#FFF4D6] px-4 py-3 text-ink sm:items-center sm:px-5"
+                    style={{ boxShadow: "0 5px 0 #221B1C" }}
+                  >
+                    <span className="text-[26px] leading-none" aria-hidden="true">
+                      ⏸️
+                    </span>
+                    <div className="text-[14px] font-bold leading-relaxed sm:text-[15px]">
+                      {generation.message ?? "測試期間 AI 生圖暫停中，暫時無法生成貼圖。"}
+                    </div>
+                  </div>
+                )}
                 <StickerGenerator
                   ref={generatorRef}
                   onSubmit={handleGenerate}
@@ -375,6 +393,7 @@ export default function Home() {
                   authLoading={authLoading}
                   quotaRemaining={quota.remaining}
                   quotaLimit={quota.limit}
+                  generationPaused={generation.paused}
                   onRequestSignIn={() => void handleRequestSignIn()}
                 />
               </motion.div>

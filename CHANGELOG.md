@@ -1,5 +1,12 @@
 # 更新日誌 (Changelog)
 
+## [0.2.2] - 2026-11-26
+
+### 修改 (Changed)
+- **測試期間暫停 AI 生圖**：Gemini 生圖模型沒有免費額度，管理員決定先不儲值。後端總開關 `GENERATION_PAUSED`（`artifacts/api-server/src/lib/generation-pause.ts`）打開時，生成、依主題改寫、文字辨識一律直接回 `generation_paused`，不扣次數、不呼叫 Gemini、不發失敗通知。
+- 前端讀新的公開 API `GET /api/stickers/status`：頁面上方顯示「⏸️ 測試期間 AI 生圖暫停中」，生成按鈕與「依主題改寫」按鈕停用。
+- 恢復方式：把 `GENERATION_PAUSED` 改成 `false` 後 push，CI 重新部署即可。
+
 ## [0.2.1] - 2026-11-26
 
 ### 修正 (Fixed)

@@ -50,6 +50,8 @@ interface StickerGeneratorProps {
   /** 今天還可以生成幾次；null＝還沒查到 */
   quotaRemaining: number | null;
   quotaLimit: number;
+  /** 後端說 AI 生圖暫停中（停用生成與 AI 改寫按鈕） */
+  generationPaused: boolean;
   /** 叫出 Google 登入視窗 */
   onRequestSignIn: () => void;
 }
@@ -60,7 +62,16 @@ export interface StickerGeneratorHandle {
 
 export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGeneratorProps>(
   function StickerGenerator(
-    { onSubmit, isPending, signedIn, authLoading, quotaRemaining, quotaLimit, onRequestSignIn },
+    {
+      onSubmit,
+      isPending,
+      signedIn,
+      authLoading,
+      quotaRemaining,
+      quotaLimit,
+      generationPaused,
+      onRequestSignIn,
+    },
     ref,
   ) {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -479,7 +490,7 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                 <button
                   type="button"
                   onClick={handleApplyTheme}
-                  disabled={!theme || isApplyingTheme}
+                  disabled={!theme || isApplyingTheme || generationPaused}
                   data-testid="apply-theme-button"
                   className="inline-flex items-center gap-1 rounded-full border-2 border-ink bg-ink px-[13px] py-1.5 text-[12px] font-bold text-cream transition hover:bg-ink/90 disabled:opacity-50"
                 >
@@ -552,6 +563,7 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
               type="button"
               onClick={signedIn ? form.handleSubmit(handleSubmit) : onRequestSignIn}
               disabled={
+                generationPaused ||
                 authLoading ||
                 isPending ||
                 (signedIn &&
@@ -568,6 +580,13 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
                 <>
                   <Loader2 className="h-6 w-6 animate-spin" />
                   魔法生成中…
+                </>
+              ) : generationPaused ? (
+                <>
+                  <span className="text-[26px]" aria-hidden="true">
+                    ⏸️
+                  </span>
+                  AI 生圖暫停中
                 </>
               ) : !signedIn ? (
                 <>
@@ -596,10 +615,14 @@ export const StickerGenerator = forwardRef<StickerGeneratorHandle, StickerGenera
               data-testid="quota-note"
               className={cn(
                 "mt-2 text-center text-[13px] font-semibold",
-                signedIn && quotaRemaining === 0 ? "text-destructive" : "text-[#7c7173]",
+                generationPaused || (signedIn && quotaRemaining === 0)
+                  ? "text-destructive"
+                  : "text-[#7c7173]",
               )}
             >
-              {!signedIn
+              {generationPaused
+                ? "測試期間暫停生成，恢復後會再開放"
+                : !signedIn
                 ? `需要 Google 登入，每個帳號每天可以生成 ${quotaLimit} 次`
                 : quotaRemaining === null
                   ? `每個帳號每天可以生成 ${quotaLimit} 次`
