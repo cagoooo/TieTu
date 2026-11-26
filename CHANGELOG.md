@@ -1,5 +1,10 @@
 # 更新日誌 (Changelog)
 
+## [0.3.1] - 2026-11-26
+
+### 修改 (Changed)
+- 按「下載 SKILL.md」後，同一次點擊會自動開新分頁到 Gemini 技能頁（`gemini.google.com/customize/skills`，沒登入會先登入再回來），並跳出提示「按上方『上傳』選剛下載的 SKILL.md」；步驟 ② 的連結也直接指向技能頁。
+
 ## [0.3.0] - 2026-11-26
 
 ### 新增 (Added)

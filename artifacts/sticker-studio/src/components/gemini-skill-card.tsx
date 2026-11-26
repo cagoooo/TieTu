@@ -5,6 +5,11 @@ import { useToast } from "@/hooks/use-toast";
 /** 技能檔放在 public/skills/，跟著 Vite base（GitHub Pages 是 /TieTu/）走 */
 const SKILL_URL = `${import.meta.env.BASE_URL}skills/line-sticker-24-grid/SKILL.md`;
 const MAX_SHEET_BYTES = 20 * 1024 * 1024;
+/**
+ * Gemini 網頁版「技能」頁（2026-11-26 實測：gemini.google.com/skills 會在登入後
+ * 轉到 /customize/skills）。沒登入會先跳 Google 登入，登入完自動回到這頁。
+ */
+const GEMINI_SKILLS_URL = "https://gemini.google.com/customize/skills";
 
 interface GeminiSkillCardProps {
   /** 使用者上傳 Gemini 畫好的貼圖表（data URL），交給結果頁切圖 */
@@ -36,6 +41,20 @@ export function GeminiSkillCard({ onSheetUploaded }: GeminiSkillCardProps) {
     reader.readAsDataURL(file);
   };
 
+  /**
+   * 按「下載 SKILL.md」：<a download> 照常下載，同一次點擊裡順手開新分頁到
+   * Gemini 技能頁（必須在點擊當下同步呼叫 window.open，否則會被擋彈出視窗）。
+   */
+  const handleDownloadClick = () => {
+    // noopener 時 window.open 一律回傳 null，判斷不了是否被擋，所以提示一律附備用連結
+    window.open(GEMINI_SKILLS_URL, "_blank", "noopener,noreferrer");
+    toast({
+      title: "已下載 SKILL.md，正在開啟 Gemini 技能頁",
+      description: "在新分頁按上方「上傳」，選剛下載的 SKILL.md。沒看到新分頁？點步驟 ② 的「Gemini 技能頁」。",
+      duration: 9000,
+    });
+  };
+
   return (
     <section
       data-testid="gemini-skill-card"
@@ -54,6 +73,7 @@ export function GeminiSkillCard({ onSheetUploaded }: GeminiSkillCardProps) {
             <a
               href={SKILL_URL}
               download="SKILL.md"
+              onClick={handleDownloadClick}
               data-testid="download-skill"
               className="inline-flex items-center gap-1 rounded-full border-2 border-ink bg-ink px-3 py-1.5 text-[13px] font-bold text-cream hover:bg-ink/90"
             >
@@ -72,16 +92,17 @@ export function GeminiSkillCard({ onSheetUploaded }: GeminiSkillCardProps) {
         <li className="rounded-[14px] bg-[#FFF4D6] px-3 py-3">
           <b>② 裝進 Gemini</b>
           <br />
-          用電腦打開{" "}
+          下載後會自動開啟{" "}
           <a
-            href="https://gemini.google.com/"
+            href={GEMINI_SKILLS_URL}
             target="_blank"
             rel="noopener noreferrer"
+            data-testid="open-gemini-skills"
             className="font-bold text-coral underline underline-offset-2"
           >
-            gemini.google.com
+            Gemini 技能頁
           </a>
-          ，到「技能（Skills）」上傳剛下載的 SKILL.md。
+          ，按上方「上傳」選剛下載的 SKILL.md。
           <span className="mt-1 block text-[12px] text-[#9a8f84]">建議用個人 Gmail 帳號登入；手機 App 目前不能上傳技能。</span>
         </li>
         <li className="rounded-[14px] bg-[#FFF4D6] px-3 py-3">
