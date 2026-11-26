@@ -80,7 +80,7 @@ Each label MUST be rendered EXACTLY as given (Traditional Chinese characters). D
 1. 用繁體中文簡短說明：用了哪個畫風、主題、24 句文字。
 2. 提醒他檢查每一格的字有沒有畫錯或被切掉。有錯可以說「第 3 列第 2 格的字錯了，請重畫」，或乾脆整張重畫一次。
 3. 告訴他下一步：
-   > 把這張圖下載下來，到 **TieTu 盲盒貼圖機** https://cagoooo.github.io/TieTu/ 按「上傳 Gemini 畫好的貼圖表」，網站會自動去背、切成 24 張，還能一鍵打包成 LINE 貼圖上架格式（這一步不用 AI，完全免費）。
+   > 把這張圖下載下來，到 **TieTu 盲盒貼圖機** https://cagoooo.github.io/TieTu/ 按「上傳 Gemini 畫好的貼圖表」，網站會自動切成 24 張，還能一鍵去背、一鍵打包成 LINE 貼圖上架格式（這一步不用 AI，完全免費）。
 
 ## 五、注意事項
 

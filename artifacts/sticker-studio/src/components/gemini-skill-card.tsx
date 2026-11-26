@@ -113,7 +113,7 @@ export function GeminiSkillCard({ onSheetUploaded }: GeminiSkillCardProps) {
         <li className="rounded-[14px] bg-[#FFF4D6] px-3 py-3">
           <b>④ 拿回來切圖</b>
           <br />
-          按下面的按鈕上傳，自動去背、切成 24 張、打包 LINE 格式。
+          按下面的按鈕上傳，自動切成 24 張，可一鍵去背、打包 LINE 格式。
         </li>
       </ol>
 
