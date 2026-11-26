@@ -270,6 +270,7 @@ export default function Home() {
 
             const titleByCode: Record<string, string> = {
               safety_block: "AI 拒絕了這張照片",
+              billing_required: "AI 生圖服務暫停中",
               quota_exhausted: "今天 AI 額度用完了",
               model_not_found: "AI 模型暫時無法使用",
               max_tokens: "AI 輸出被截斷",

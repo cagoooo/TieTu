@@ -18,6 +18,7 @@ export interface GenerateStickerInput {
 
 export type StickerGenerationErrorCode =
   | "safety_block"        // Gemini blocked the prompt or response (photo / theme too sensitive)
+  | "billing_required"    // 402 — prepaid credits / billing on the key's project (waiting won't fix it)
   | "quota_exhausted"     // 429 / RESOURCE_EXHAUSTED — free tier daily cap usually
   | "model_not_found"     // 404 — model name retired (the GEMINI_IMAGE_MODEL override case)
   | "max_tokens"          // finishReason=MAX_TOKENS — output truncated before image emitted
@@ -28,16 +29,31 @@ export type StickerGenerationErrorCode =
 export class StickerGenerationError extends Error {
   readonly code: StickerGenerationErrorCode;
   readonly userMessage: string;
+  /** Message for the admin notification; falls back to userMessage. */
+  readonly adminMessage: string;
   readonly httpStatus: number;
   readonly cause?: unknown;
 
-  constructor(code: StickerGenerationErrorCode, userMessage: string, httpStatus: number, cause?: unknown) {
+  constructor(
+    code: StickerGenerationErrorCode,
+    userMessage: string,
+    httpStatus: number,
+    cause?: unknown,
+    adminMessage?: string,
+  ) {
     super(userMessage);
     this.name = "StickerGenerationError";
     this.code = code;
     this.userMessage = userMessage;
+    this.adminMessage = adminMessage ?? userMessage;
     this.httpStatus = httpStatus;
     this.cause = cause;
+  }
+
+  /** Raw upstream error text (ApiError.message is not serialised by the logger). */
+  get causeMessage(): string | undefined {
+    const c = this.cause as { message?: unknown } | undefined;
+    return typeof c?.message === "string" ? c.message.slice(0, 300) : undefined;
   }
 }
 
@@ -68,6 +84,17 @@ function classifyGeminiError(err: unknown): StickerGenerationError {
       "AI 模型暫時無法使用,可能是模型版本剛被官方棄用。請告知管理員執行 ListModels 確認最新可用模型。",
       503,
       err,
+    );
+  }
+  // 402 must be checked before the generic "quota" text match: its message can
+  // also mention quota, but it means billing/prepaid credits, not a daily cap.
+  if (status === 402 || msg.includes("prepayment") || msg.includes("credits are depleted")) {
+    return new StickerGenerationError(
+      "billing_required",
+      "AI 生圖服務暫時停用中(管理員端帳單問題),已通知管理員處理。這次不會扣你的次數,請晚點再回來試試。",
+      503,
+      err,
+      "Gemini 回傳 402(需要付款):金鑰所屬專案的預付儲值用完或帳單有問題,等到隔天不會自動恢復。請到 Google AI Studio 的帳單頁檢查。",
     );
   }
   if (status === 429 || msg.includes("quota") || msg.includes("resource_exhausted") || msg.includes("rate limit")) {

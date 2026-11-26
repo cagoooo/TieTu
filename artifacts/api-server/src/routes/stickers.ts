@@ -344,7 +344,7 @@ router.post(
     } catch (err) {
       if (err instanceof StickerGenerationError) {
         logger.warn(
-          { code: err.code, cause: err.cause, theme, style: styleId },
+          { code: err.code, cause: err.cause, causeMessage: err.causeMessage, theme, style: styleId },
           "Sticker generation classified failure",
         );
         const remainingAfterRefund = await refundAndRemaining();
@@ -354,7 +354,7 @@ router.post(
           styleId,
           remaining: remainingAfterRefund,
           elapsedMs: Date.now() - startedAt,
-          errorMessage: `${err.code}：${err.userMessage}`,
+          errorMessage: `${err.code}：${err.adminMessage}`,
         });
         res.status(err.httpStatus).json({
           error: err.userMessage,
@@ -373,7 +373,7 @@ router.post(
             uid: authedUser.uid,
             email: authedUser.email ?? null,
             errorCode: err.code,
-            errorMessage: err.userMessage,
+            errorMessage: err.adminMessage,
           },
           logger,
         );
